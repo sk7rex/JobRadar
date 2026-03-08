@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "job-hunter"
+version = "0.1.0"
+description = "Vacancy Aggregator System"
+authors = ["Student Name <student@university.edu>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+sqlmodel = "^0.0.14"
+typer = {extras = ["all"], version = "^0.9.0"}
+rich = "^13.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
