@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy import inspect
-from src.job_hunter.config import DATABASE_URL
+from src.job_radar.config import DATABASE_URL
 
 engine = create_engine(
     DATABASE_URL,

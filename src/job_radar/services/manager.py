@@ -1,6 +1,6 @@
 from sqlmodel import select, Session
-from src.job_hunter.models.task import SearchTask, TaskStatus
-from src.job_hunter.config import ALLOWED_SOURCES
+from src.job_radar.models.task import SearchTask, TaskStatus
+from src.job_radar.config import ALLOWED_SOURCES
 
 
 class TaskManager:

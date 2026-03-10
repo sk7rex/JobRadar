@@ -5,11 +5,11 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-from src.job_hunter.database import init_db, get_session
-from src.job_hunter.models.task import TaskStatus
-from src.job_hunter.services.manager import TaskManager
+from src.job_radar.database import init_db, get_session
+from src.job_radar.models.task import TaskStatus
+from src.job_radar.services.manager import TaskManager
 
-app = typer.Typer(help="Job Hunter Manager CLI")
+app = typer.Typer(help="Job radar Manager CLI")
 console = Console()
 
 
@@ -54,7 +54,7 @@ def _list_tasks_command(limit: int = 10) -> None:
             console.print("[yellow]Очередь задач пуста.[/yellow]")
             return
 
-        table = Table(title="Очередь задач Job Hunter")
+        table = Table(title="Очередь задач Job radar")
         table.add_column("ID", style="cyan", no_wrap=True)
         table.add_column("Запрос", style="magenta")
         table.add_column("Источник", style="blue")
@@ -104,7 +104,7 @@ def list_tasks(limit: int = 10) -> None:
 @app.command()
 def interactive() -> None:
     """Запуск интерактивного режима (мини-интерпретатор команд)."""
-    console.print("[bold green]Добро пожаловать в Job Hunter interactive shell![/bold green]")
+    console.print("[bold green]Добро пожаловать в Job radar interactive shell![/bold green]")
     console.print("[dim]Доступные команды:[/dim]")
     console.print("  [cyan]init[/cyan]")
     console.print("  [cyan]add <keyword> <source>[/cyan]")
