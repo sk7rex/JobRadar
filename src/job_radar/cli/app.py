@@ -19,12 +19,12 @@ def _init_db_command() -> None:
         status = init_db()
 
         if status == "created":
-            console.print("[bold green]✔ База данных успешно инициализирована![/bold green]")
+            console.print("[bold green][OK] База данных успешно инициализирована![/bold green]")
         elif status == "exists":
-            console.print("[bold yellow]⚠ База данных уже инициализирована[/bold yellow]")
+            console.print("[bold yellow][WARNING] База данных уже инициализирована[/bold yellow]")
 
     except Exception as e:
-        console.print(f"[bold red]✘ Ошибка инициализации:[/bold red] {e}")
+        console.print(f"[bold red][ERROR] Ошибка инициализации:[/bold red] {e}")
 
 
 def _add_task_command(keyword: str, source: str) -> None:
@@ -34,7 +34,7 @@ def _add_task_command(keyword: str, source: str) -> None:
         try:
             task = manager.create_task(keyword, source)
             console.print(
-                f"[green]✔ Задача создана![/green] "
+                f"[green][OK] Задача создана![/green] "
                 f"ID: [bold]{task.id}[/bold] | "
                 f"Ищем: [magenta]{task.keyword}[/magenta] @ [blue]{task.source}[/blue]"
             )
@@ -84,25 +84,27 @@ def _list_tasks_command(limit: int = 10) -> None:
 
 
 @app.command()
-def init() -> None:
+def init(ctx: typer.Context, **kwargs) -> None:
     """Инициализация базы данных (создание таблиц)."""
     _init_db_command()
 
 
 @app.command()
-def add(keyword: str, source: str) -> None:
+def add(ctx: typer.Context, keyword: str, source: str, **kwargs) -> None:
     """Добавить новую задачу. Пример: add 'python developer' habr"""
     _add_task_command(keyword, source)
 
 
 @app.command(name="list")
-def list_tasks(limit: int = 10) -> None:
-    """Показать список последних задач."""
+def list_tasks(ctx: typer.Context,
+    limit: int = typer.Argument(default=10, show_default=True, help="Количество задач"), **kwargs
+) -> None:
+    """Показать список последних задач. Использование: list [количество]"""
     _list_tasks_command(limit)
 
 
 @app.command()
-def interactive() -> None:
+def interactive(ctx: typer.Context, **kwargs) -> None:
     """Запуск интерактивного режима (мини-интерпретатор команд)."""
     console.print("[bold green]Добро пожаловать в Job radar interactive shell![/bold green]")
     console.print("[dim]Доступные команды:[/dim]")
