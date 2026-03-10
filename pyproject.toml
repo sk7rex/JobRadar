@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "job-hunter"
+name = "job-radar"
 version = "0.1.0"
 description = "Vacancy Aggregator System"
 authors = ["Student Name <student@university.edu>"]
