@@ -19,11 +19,12 @@ def _init_db_command() -> None:
     try:
         status = init_db()
         if status == "created":
-            console.print("[bold green]✔ База данных создана и источники загружены![/bold green]")
+            console.print("[bold green][OK] База данных успешно инициализирована![/bold green]")
         elif status == "exists":
-            console.print("[bold yellow]⚠ База данных уже существует.[/bold yellow]")
+            console.print("[bold yellow][WARNING] База данных уже инициализирована[/bold yellow]")
+
     except Exception as e:
-        console.print(f"[bold red]✘ Ошибка инициализации:[/bold red] {e}")
+        console.print(f"[bold red][ERROR] Ошибка инициализации:[/bold red] {e}")
 
 
 def _add_task_command(keyword: str, source: str) -> None:
@@ -33,7 +34,7 @@ def _add_task_command(keyword: str, source: str) -> None:
             task = manager.create_task(keyword, source)
             src_name = task.source_relation.name if task.source_relation else source
             console.print(
-                f"[green]✔ Задача создана![/green] "
+                f"[green][OK] Задача создана![/green] "
                 f"ID: [bold]{task.id}[/bold] | "
                 f"Ищем: [magenta]{task.keyword}[/magenta] @ [blue]{src_name}[/blue]"
             )
