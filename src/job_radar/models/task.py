@@ -1,7 +1,14 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
-from sqlmodel import Field, SQLModel
+from typing import Optional, List, TYPE_CHECKING
+
+from sqlmodel import Field, SQLModel, Relationship
+
+# Импорты только для проверки типов, чтобы избежать циклической зависимости
+if TYPE_CHECKING:
+    from src.job_radar.models.source import Source
+    from src.job_radar.models.vacancy import Vacancy
+    from src.job_radar.models.log import Log
 
 
 class TaskStatus(str, Enum):
@@ -25,25 +32,21 @@ class TaskStatus(str, Enum):
 
 
 class SearchTask(SQLModel, table=True):
-    """
-    Модель данных для задачи на поиск вакансий.
+    __tablename__ = "search_tasks"
 
-    Каждая запись — это задача поиска вакансий
-    по конкретному ключевому слову и источнику.
-    """
+    id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор задачи")
 
-    # Уникальный идентификатор задачи
-    id: Optional[int] = Field(default=None, primary_key=True)
+    # Внешний ключ на таблицу Sources
+    source_id: int = Field(foreign_key="sources.id", description="Ссылка на источник")
 
-    # Входные параметры
-    keyword: str = Field(index=True,
-                         description="Ключевое слово поиска (Python, Java)")
-    source: str = Field(description="Источник (habr, hh)")
+    keyword: str = Field(index=True, description="Ключевое слово поиска")
+    status: TaskStatus = Field(default=TaskStatus.NEW, description="Текущий статус")
+    items_found: int = Field(default=0, description="Количество найденных вакансий")
 
-    # Состояние
-    status: TaskStatus = Field(default=TaskStatus.NEW)
-    items_found: int = Field(default=0, description="Сколько вакансий нашли")
-
-    # Временные метки
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+    # Связи (ORM)
+    source_relation: "Source" = Relationship(back_populates="tasks")
+    vacancies: List["Vacancy"] = Relationship(back_populates="task")
+    logs: List["Log"] = Relationship(back_populates="task")
