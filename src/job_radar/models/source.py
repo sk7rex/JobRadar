@@ -1,8 +1,10 @@
 from typing import Optional, List, TYPE_CHECKING
+
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from src.job_radar.models.task import SearchTask
+
 
 class Source(SQLModel, table=True):
     __tablename__ = "sources"

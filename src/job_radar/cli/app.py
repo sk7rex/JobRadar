@@ -1,9 +1,9 @@
 import shlex
+
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
-from typing import Optional
 
 from src.job_radar.database import init_db, get_session
 from src.job_radar.models.task import TaskStatus
@@ -11,6 +11,7 @@ from src.job_radar.services.manager import TaskManager
 
 app = typer.Typer(help="Job Radar Manager CLI")
 console = Console()
+
 
 # --- ВНУТРЕННИЕ ФУНКЦИИ ---
 
@@ -61,7 +62,7 @@ def _delete_task_command(task_id: int) -> None:
             else:
                 console.print(f"[red]Task {task_id} not found.[/red]")
         except Exception as e:
-             console.print(f"[bold red]Ошибка удаления:[/bold red] {e}")
+            console.print(f"[bold red]Ошибка удаления:[/bold red] {e}")
 
 
 def _delete_source_command(name: str) -> None:
@@ -98,7 +99,7 @@ def _list_tasks_command(limit: int = 10) -> None:
                 TaskStatus.COMPLETED: "green",
                 TaskStatus.FAILED: "red"
             }.get(task.status, "white")
-            
+
             src_name = task.source_relation.name if task.source_relation else "?"
 
             table.add_row(
@@ -116,7 +117,7 @@ def _list_sources_command() -> None:
     with get_session() as session:
         manager = TaskManager(session)
         sources = manager.list_sources()
-        
+
         table = Table(title="Источники данных")
         table.add_column("ID", style="cyan")
         table.add_column("Название", style="bold green")
@@ -126,7 +127,7 @@ def _list_sources_command() -> None:
         for src in sources:
             active_icon = "✅" if src.is_active else "❌"
             table.add_row(str(src.id), src.name, src.url, active_icon)
-        
+
         console.print(table)
 
 
@@ -134,7 +135,7 @@ def _list_vacancies_command(limit: int = 10) -> None:
     with get_session() as session:
         manager = TaskManager(session)
         vacancies = manager.list_vacancies(limit)
-        
+
         if not vacancies:
             console.print("[yellow]Вакансий пока нет.[/yellow]")
             return
@@ -150,7 +151,7 @@ def _list_vacancies_command(limit: int = 10) -> None:
             salary = "—"
             if v.salary_from: salary = f"от {v.salary_from}"
             if v.salary_to: salary += f" до {v.salary_to}"
-            
+
             table.add_row(str(v.id), v.title[:50], v.company or "—", salary, str(v.task_id))
         console.print(table)
 
@@ -159,7 +160,7 @@ def _list_logs_command(limit: int = 20) -> None:
     with get_session() as session:
         manager = TaskManager(session)
         logs = manager.list_logs(limit)
-        
+
         if not logs:
             console.print("[yellow]Логов пока нет.[/yellow]")
             return
@@ -172,9 +173,12 @@ def _list_logs_command(limit: int = 20) -> None:
 
         for log in logs:
             level_style = "white"
-            if log.level == "ERROR": level_style = "bold red"
-            elif log.level == "WARNING": level_style = "yellow"
-            elif log.level == "INFO": level_style = "green"
+            if log.level == "ERROR":
+                level_style = "bold red"
+            elif log.level == "WARNING":
+                level_style = "yellow"
+            elif log.level == "INFO":
+                level_style = "green"
 
             table.add_row(
                 log.created_at.strftime("%H:%M:%S"),
@@ -190,20 +194,26 @@ def _list_logs_command(limit: int = 20) -> None:
 @app.command()
 def init(): _init_db_command()
 
+
 @app.command()
 def add(keyword: str, source: str): _add_task_command(keyword, source)
+
 
 @app.command(name="tasks")
 def list_tasks(limit: int = 10): _list_tasks_command(limit)
 
+
 @app.command(name="sources")
 def list_sources(): _list_sources_command()
+
 
 @app.command(name="vacancies")
 def list_vacancies(limit: int = 10): _list_vacancies_command(limit)
 
+
 @app.command(name="logs")
 def list_logs(limit: int = 20): _list_logs_command(limit)
+
 
 # --- ИНТЕРАКТИВНЫЙ РЕЖИМ ---
 
@@ -217,12 +227,12 @@ def interactive():
         try:
             raw = Prompt.ask("\n[bold cyan]jh[/bold cyan] >").strip()
             if not raw: continue
-            
+
             parts = shlex.split(raw)
             cmd = parts[0].lower()
 
             if cmd in ["exit", "quit"]: break
-            
+
             if cmd == "help":
                 console.print(
                     "\n[bold]Доступные команды:[/bold]\n"
@@ -240,10 +250,10 @@ def interactive():
                 continue
 
             # === Маршрутизация команд ===
-            
-            if cmd == "init": 
+
+            if cmd == "init":
                 _init_db_command()
-            
+
             elif cmd == "add":
                 # Проверяем, добавляем ли мы источник или задачу
                 if len(parts) > 1 and parts[1].lower() == "source":
@@ -258,29 +268,31 @@ def interactive():
                         console.print("[red]Использование: add <keyword> <source>[/red]")
                     else:
                         # Собираем keyword, если он из нескольких слов, а source последнее
-                        if len(parts) == 3: kw, src = parts[1], parts[2]
-                        else: kw, src = " ".join(parts[1:-1]), parts[-1]
+                        if len(parts) == 3:
+                            kw, src = parts[1], parts[2]
+                        else:
+                            kw, src = " ".join(parts[1:-1]), parts[-1]
                         _add_task_command(kw, src)
 
             elif cmd in ["rm", "del", "delete"]:
                 if len(parts) < 3:
                     console.print("[red]Использование: rm task <id> ИЛИ rm source <name>[/red]")
                     continue
-                
+
                 target_type = parts[1].lower()
                 target_val = parts[2]
 
                 if target_type == "task":
                     if not target_val.isdigit():
-                         console.print("[red]ID задачи должен быть числом.[/red]")
+                        console.print("[red]ID задачи должен быть числом.[/red]")
                     else:
-                         _delete_task_command(int(target_val))
+                        _delete_task_command(int(target_val))
                 elif target_type == "source":
                     _delete_source_command(target_val)
                 else:
                     console.print(f"[red]Неизвестный тип объекта: {target_type}. Используйте task или source.[/red]")
 
-            
+
             elif cmd in ["tasks", "list"]:
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 10
                 _list_tasks_command(limit)

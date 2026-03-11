@@ -1,12 +1,9 @@
-from sqlmodel import SQLModel, create_engine, Session, select
 from sqlalchemy import inspect
-from src.job_radar.config import DATABASE_URL, DEFAULT_SOURCES
+from sqlmodel import SQLModel, create_engine, Session, select
 
+from src.job_radar.config import DATABASE_URL, DEFAULT_SOURCES
 # Импортируем модели, чтобы SQLModel знал о них при создании таблиц (create_all)
 from src.job_radar.models.source import Source
-from src.job_radar.models.task import SearchTask
-from src.job_radar.models.vacancy import Vacancy
-from src.job_radar.models.log import Log
 
 engine = create_engine(
     DATABASE_URL,
@@ -42,11 +39,11 @@ def init_db() -> str:
 
     if not existing_tables:
         SQLModel.metadata.create_all(engine)
-        
+
         # Сразу наполняем справочник источников
         with Session(engine) as session:
             seed_sources(session)
-            
+
         return "created"
 
     return "exists"

@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, TYPE_CHECKING
+
 from sqlmodel import Field, SQLModel, Relationship
 
 # Импорты только для проверки типов, чтобы избежать циклической зависимости
@@ -34,14 +35,14 @@ class SearchTask(SQLModel, table=True):
     __tablename__ = "search_tasks"
 
     id: Optional[int] = Field(default=None, primary_key=True, description="Уникальный идентификатор задачи")
-    
+
     # Внешний ключ на таблицу Sources
     source_id: int = Field(foreign_key="sources.id", description="Ссылка на источник")
-    
+
     keyword: str = Field(index=True, description="Ключевое слово поиска")
     status: TaskStatus = Field(default=TaskStatus.NEW, description="Текущий статус")
     items_found: int = Field(default=0, description="Количество найденных вакансий")
-    
+
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 

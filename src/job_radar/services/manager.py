@@ -1,10 +1,11 @@
-from typing import List, Optional
-from sqlmodel import select, Session
-from sqlalchemy.orm import selectinload
+from typing import List
 
-from src.job_radar.models.task import SearchTask, TaskStatus
-from src.job_radar.models.source import Source
+from sqlalchemy.orm import selectinload
+from sqlmodel import select, Session
+
 from src.job_radar.models.log import Log
+from src.job_radar.models.source import Source
+from src.job_radar.models.task import SearchTask, TaskStatus
 from src.job_radar.models.vacancy import Vacancy
 
 
@@ -28,9 +29,9 @@ class TaskManager:
         if not source:
             all_sources = self.session.exec(select(Source.name)).all()
             raise ValueError(f"Источник '{source_name}' не найден. Доступны: {', '.join(all_sources)}")
-        
+
         if not source.is_active:
-             raise ValueError(f"Источник '{source_name}' временно отключен администратором.")
+            raise ValueError(f"Источник '{source_name}' временно отключен администратором.")
 
         # Проверка дубликатов активных задач
         existing = self.session.exec(
@@ -49,15 +50,15 @@ class TaskManager:
         self.session.flush()
 
         log = Log(
-            task_id=task.id, 
-            level="INFO", 
+            task_id=task.id,
+            level="INFO",
             message=f"Task created via CLI. Keyword: {clean_kw}, Source: {clean_src_name}"
         )
         self.session.add(log)
 
         self.session.commit()
         self.session.refresh(task)
-        self.session.refresh(task, ["source_relation"]) 
+        self.session.refresh(task, ["source_relation"])
 
         return task
 
@@ -75,12 +76,12 @@ class TaskManager:
         task = self.session.get(SearchTask, task_id)
         if not task:
             return False
-        
+
         # Удаляем связанные логи
         logs = self.session.exec(select(Log).where(Log.task_id == task_id)).all()
         for log in logs:
             self.session.delete(log)
-            
+
         # Удаляем связанные вакансии
         vacancies = self.session.exec(select(Vacancy).where(Vacancy.task_id == task_id)).all()
         for v in vacancies:
@@ -102,7 +103,7 @@ class TaskManager:
         existing = self.session.exec(select(Source).where(Source.name == clean_name)).first()
         if existing:
             raise ValueError(f"Источник '{clean_name}' уже существует.")
-        
+
         source = Source(name=clean_name, url=url, is_active=True)
         self.session.add(source)
         self.session.commit()
@@ -113,14 +114,15 @@ class TaskManager:
         """Удаляет источник по имени (если нет привязанных задач)."""
         clean_name = name.strip().lower()
         source = self.session.exec(select(Source).where(Source.name == clean_name)).first()
-        
+
         if not source:
             raise ValueError(f"Источник '{clean_name}' не найден.")
 
         # Проверяем, есть ли задачи у этого источника
         tasks = self.session.exec(select(SearchTask).where(SearchTask.source_id == source.id)).first()
         if tasks:
-             raise ValueError(f"Нельзя удалить источник '{clean_name}', так как к нему привязаны задачи. Сначала удалите задачи.")
+            raise ValueError(
+                f"Нельзя удалить источник '{clean_name}', так как к нему привязаны задачи. Сначала удалите задачи.")
 
         self.session.delete(source)
         self.session.commit()
@@ -131,7 +133,7 @@ class TaskManager:
     def list_vacancies(self, limit: int = 10) -> List[Vacancy]:
         query = (
             select(Vacancy)
-            .options(selectinload(Vacancy.task)) 
+            .options(selectinload(Vacancy.task))
             .order_by(Vacancy.id.desc())
             .limit(limit)
         )

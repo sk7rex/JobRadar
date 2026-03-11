@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
+
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
@@ -11,7 +12,7 @@ class Vacancy(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="search_tasks.id")
-    
+
     title: str = Field(description="Название должности")
     company: Optional[str] = Field(default=None, description="Компания")
     city: Optional[str] = Field(default=None, description="Город")
