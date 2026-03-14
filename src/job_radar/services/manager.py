@@ -1,3 +1,4 @@
+from datetime import datetime  # <--- Добавляем импорт
 from typing import List
 
 from sqlalchemy.orm import selectinload
@@ -33,7 +34,6 @@ class TaskManager:
         if not source.is_active:
             raise ValueError(f"Источник '{source_name}' временно отключен администратором.")
 
-        # Проверка дубликатов активных задач
         existing = self.session.exec(
             select(SearchTask).where(
                 SearchTask.keyword == clean_kw,
@@ -62,6 +62,41 @@ class TaskManager:
 
         return task
 
+    def update_task_status(self, task_id: int, new_status: str) -> SearchTask:
+        """
+        Изменяет статус задачи.
+        """
+        task = self.session.get(SearchTask, task_id)
+        if not task:
+            raise ValueError(f"Задача с ID {task_id} не найдена.")
+
+        # Пытаемся преобразовать строку в Enum
+        try:
+            status_enum = TaskStatus(new_status.lower())
+        except ValueError:
+            valid_statuses = ", ".join([s.value for s in TaskStatus])
+            raise ValueError(f"Неверный статус '{new_status}'. Доступные: {valid_statuses}")
+
+        old_status = task.status
+        if old_status == status_enum:
+            return task  # Статус не изменился
+
+        task.status = status_enum
+        task.updated_at = datetime.now()
+
+        # Логируем изменение
+        log = Log(
+            task_id=task.id,
+            level="INFO",
+            message=f"Status manually changed: {old_status.value} -> {status_enum.value}"
+        )
+        self.session.add(log)
+        self.session.add(task)
+        self.session.commit()
+        self.session.refresh(task)
+
+        return task
+
     def list_tasks(self, limit: int = 10) -> List[SearchTask]:
         query = (
             select(SearchTask)
@@ -72,33 +107,28 @@ class TaskManager:
         return self.session.exec(query).all()
 
     def delete_task(self, task_id: int) -> bool:
-        """Удаляет задачу и связанные с ней данные (логи, вакансии)."""
         task = self.session.get(SearchTask, task_id)
         if not task:
             return False
 
-        # Удаляем связанные логи
         logs = self.session.exec(select(Log).where(Log.task_id == task_id)).all()
         for log in logs:
             self.session.delete(log)
 
-        # Удаляем связанные вакансии
         vacancies = self.session.exec(select(Vacancy).where(Vacancy.task_id == task_id)).all()
         for v in vacancies:
             self.session.delete(v)
 
-        # Удаляем саму задачу
         self.session.delete(task)
         self.session.commit()
         return True
 
     # --- ИСТОЧНИКИ (SOURCES) ---
-
+    
     def list_sources(self) -> List[Source]:
         return self.session.exec(select(Source)).all()
 
     def add_source(self, name: str, url: str) -> Source:
-        """Добавляет новый источник."""
         clean_name = name.strip().lower()
         existing = self.session.exec(select(Source).where(Source.name == clean_name)).first()
         if existing:
@@ -111,14 +141,12 @@ class TaskManager:
         return source
 
     def delete_source(self, name: str) -> bool:
-        """Удаляет источник по имени (если нет привязанных задач)."""
         clean_name = name.strip().lower()
         source = self.session.exec(select(Source).where(Source.name == clean_name)).first()
 
         if not source:
             raise ValueError(f"Источник '{clean_name}' не найден.")
 
-        # Проверяем, есть ли задачи у этого источника
         tasks = self.session.exec(select(SearchTask).where(SearchTask.source_id == source.id)).first()
         if tasks:
             raise ValueError(

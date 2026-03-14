@@ -54,6 +54,19 @@ def _add_source_command(name: str, url: str) -> None:
             console.print(f"[bold red]Ошибка:[/bold red] {e}")
 
 
+def _set_status_command(task_id: int, new_status: str) -> None:
+    """Изменяет статус задачи через менеджер."""
+    with get_session() as session:
+        manager = TaskManager(session)
+        try:
+            task = manager.update_task_status(task_id, new_status)
+            console.print(f"[green]✔ Статус задачи {task_id} изменен на [bold]{task.status.value}[/bold][/green]")
+        except ValueError as e:
+            console.print(f"[bold red]Ошибка:[/bold red] {e}")
+        except Exception as e:
+            console.print(f"[bold red]Неожиданная ошибка:[/bold red] {e}")
+
+
 def _delete_task_command(task_id: int) -> None:
     with get_session() as session:
         manager = TaskManager(session)
@@ -204,6 +217,10 @@ def add(keyword: str, source: str): _add_task_command(keyword, source)
 def list_tasks(limit: int = 10): _list_tasks_command(limit)
 
 
+@app.command(name="status")
+def set_status(task_id: int, status: str): _set_status_command(task_id, status)
+
+
 @app.command(name="sources")
 def list_sources(): _list_sources_command()
 
@@ -239,6 +256,7 @@ def interactive():
                     "\n[bold]Доступные команды:[/bold]\n"
                     "  [green]init[/green]                         - Создать базу данных\n"
                     "  [green]add <keyword> <source>[/green]               - Добавить задачу (напр: add python hh)\n"
+                    "  [green]status <id> <new_status>[/green]            - Изменить статус задачи\n"
                     "  [green]add source <name> <url>[/green]      - Добавить новый источник\n"
                     "  [green]rm task <id>[/green]                 - Удалить задачу\n"
                     "  [green]rm source <name>[/green]             - Удалить источник\n"
@@ -274,6 +292,15 @@ def interactive():
                         else:
                             kw, src = " ".join(parts[1:-1]), parts[-1]
                         _add_task_command(kw, src)
+
+            elif cmd == "status":
+                if len(parts) != 3:
+                    console.print("[red]Использование: status <id> <new_status>[/red]")
+                else:
+                    if not parts[1].isdigit():
+                        console.print("[red]ID задачи должен быть числом.[/red]")
+                    else:
+                        _set_status_command(int(parts[1]), parts[2])
 
             elif cmd in ["rm", "del", "delete"]:
                 if len(parts) < 3:
