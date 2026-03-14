@@ -42,7 +42,7 @@ def test_engine():
     try:
         os.unlink(db_path)
     except PermissionError:
-        print(f"Не удалось удалить временный файл {db_path}: {e}")
+        print(f"Не удалось удалить временный файл {db_path}")
 
 
 @pytest.fixture
