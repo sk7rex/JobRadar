@@ -17,7 +17,6 @@ class TaskManager:
     # --- ЗАДАЧИ (TASKS) ---
 
     def create_task(self, keyword: str, source_name: str) -> SearchTask:
-        # ... (код без изменений) ...
         clean_kw = keyword.strip().lower()
         clean_src_name = source_name.strip().lower()
 
@@ -99,7 +98,6 @@ class TaskManager:
         return task
 
     def list_tasks(self, limit: int = 10) -> List[SearchTask]:
-        # ... (код без изменений) ...
         query = (
             select(SearchTask)
             .options(selectinload(SearchTask.source_relation))
@@ -109,7 +107,6 @@ class TaskManager:
         return self.session.exec(query).all()
 
     def delete_task(self, task_id: int) -> bool:
-        # ... (код без изменений) ...
         task = self.session.get(SearchTask, task_id)
         if not task:
             return False
@@ -127,7 +124,7 @@ class TaskManager:
         return True
 
     # --- ИСТОЧНИКИ (SOURCES) ---
-    # ... (Остальной код без изменений) ...
+    
     def list_sources(self) -> List[Source]:
         return self.session.exec(select(Source)).all()
 

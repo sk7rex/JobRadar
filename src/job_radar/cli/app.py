@@ -16,7 +16,6 @@ console = Console()
 # --- ВНУТРЕННИЕ ФУНКЦИИ ---
 
 def _init_db_command() -> None:
-    # ... (без изменений) ...
     try:
         status = init_db()
         if status == "created":
@@ -29,7 +28,6 @@ def _init_db_command() -> None:
 
 
 def _add_task_command(keyword: str, source: str) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         try:
@@ -47,7 +45,6 @@ def _add_task_command(keyword: str, source: str) -> None:
 
 
 def _add_source_command(name: str, url: str) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         try:
@@ -71,7 +68,6 @@ def _set_status_command(task_id: int, new_status: str) -> None:
 
 
 def _delete_task_command(task_id: int) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         try:
@@ -84,7 +80,6 @@ def _delete_task_command(task_id: int) -> None:
 
 
 def _delete_source_command(name: str) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         try:
@@ -95,7 +90,6 @@ def _delete_source_command(name: str) -> None:
 
 
 def _list_tasks_command(limit: int = 10) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         tasks = manager.list_tasks(limit)
@@ -134,7 +128,6 @@ def _list_tasks_command(limit: int = 10) -> None:
 
 
 def _list_sources_command() -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         sources = manager.list_sources()
@@ -153,7 +146,6 @@ def _list_sources_command() -> None:
 
 
 def _list_vacancies_command(limit: int = 10) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         vacancies = manager.list_vacancies(limit)
@@ -179,7 +171,6 @@ def _list_vacancies_command(limit: int = 10) -> None:
 
 
 def _list_logs_command(limit: int = 20) -> None:
-    # ... (без изменений) ...
     with get_session() as session:
         manager = TaskManager(session)
         logs = manager.list_logs(limit)
