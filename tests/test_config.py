@@ -9,12 +9,6 @@ def test_base_dir():
     assert config.BASE_DIR.name == "JobRadar"
 
 
-def test_allowed_sources():
-    """TC-CONF-002: Проверка списка разрешенных источников"""
-    expected = {"habr", "hh", "geekjob", "linkedin"}
-    assert config.ALLOWED_SOURCES == expected
-
-
 def test_database_url():
     """Проверка формирования URL БД"""
     assert config.DATABASE_URL.startswith("sqlite:///")

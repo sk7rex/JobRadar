@@ -1,65 +1,66 @@
 import pytest
 import tempfile
 import os
-import time
 from pathlib import Path
-from sqlmodel import Session, SQLModel, create_engine
-
-# Добавляем корневую директорию в путь
+from sqlmodel import Session, SQLModel, create_engine, select
+from sqlalchemy import event, inspect
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.job_radar.database import engine as main_engine
-from src.job_radar.config import DATABASE_URL
+from src.job_radar.models.source import Source
+from src.job_radar.models.task import SearchTask, TaskStatus
+from src.job_radar.models.log import Log
+from src.job_radar.models.vacancy import Vacancy
+from src.job_radar.config import DEFAULT_SOURCES
 
 
-@pytest.fixture
-def temp_db():
-    """Создает временную БД для тестов с правильным закрытием"""
-    # Создаем временный файл
+@pytest.fixture(scope="session")
+def test_engine():
+
+    """Создает временную БД для тестов с источниками по умолчанию"""
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
         db_path = f.name
-    
-    # Создаем engine с правильными настройками
-    test_engine = create_engine(
-        f"sqlite:///{db_path}",
-        connect_args={"check_same_thread": False},
-        pool_size=1,  # Ограничиваем пул соединений
-        max_overflow=0
-    )
-    
-    # Создаем таблицы
+
+    test_engine = create_engine(f"sqlite:///{db_path}")
     SQLModel.metadata.create_all(test_engine)
     
-    # Отдаем engine тестам
+    # Добавляем источники по умолчанию (как в реальном приложении)
+    with Session(test_engine) as session:
+        for src_data in DEFAULT_SOURCES:
+            # Проверяем, нет ли уже такого источника
+            existing = session.exec(
+                select(Source).where(Source.name == src_data["name"])
+            ).first()
+            if not existing:
+                source = Source(**src_data)
+                session.add(source)
+        session.commit()
+    
     yield test_engine
     
-    # ВАЖНО: Явно закрываем все соединения
     test_engine.dispose()
-    
-    # Даем время на закрытие
-    time.sleep(0.1)
-    
-    # Пробуем удалить файл (с повторными попытками)
-    for attempt in range(3):
-        try:
-            if os.path.exists(db_path):
-                os.unlink(db_path)
-            break  # Успешно удалили
-        except PermissionError:
-            if attempt == 2:  # Последняя попытка
-                print(f"⚠ Не удалось удалить {db_path}")
-                # Не падаем, просто логируем
-            else:
-                time.sleep(0.1)  # Ждем и пробуем снова
+    try:
+        os.unlink(db_path)
+    except PermissionError:
+        print(f"Не удалось удалить временный файл {db_path}: {e}")
 
 
 @pytest.fixture
-def session(temp_db):
-    """Фикстура для сессии БД с автоматическим закрытием"""
-    with Session(temp_db) as session:
-        yield session
-    # Сессия автоматически закрывается при выходе из with
+def session(test_engine):
+    """
+    Фикстура сессии с транзакциями.
+    Каждый тест получает свою транзакцию, которая откатывается после теста.
+    """
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    
+    session = Session(bind=connection)
+    
+    yield session
+    
+    transaction.rollback()
+    session.close()
+    connection.close()
 
 
 @pytest.fixture
@@ -70,9 +71,84 @@ def manager(session):
 
 
 @pytest.fixture
-def sample_task_data():
-    """Образец данных для задачи"""
-    return {
-        "keyword": "python",
-        "source": "habr"
-    }
+def test_source(session):
+    """Возвращает существующий источник habr (не создает новый)"""
+    from sqlmodel import select
+    
+    source = session.exec(
+        select(Source).where(Source.name == "habr")
+    ).first()
+    
+    if not source:
+        source = Source(name="habr", url="https://habr.com", is_active=True)
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+    
+    return source
+
+
+@pytest.fixture
+def another_source(session):
+    """Возвращает существующий источник hh"""
+    from sqlmodel import select
+    
+    source = session.exec(
+        select(Source).where(Source.name == "hh")
+    ).first()
+    
+    if not source:
+        source = Source(name="hh", url="https://hh.ru", is_active=True)
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+    
+    return source
+
+
+@pytest.fixture
+def test_task(session, test_source):
+    """Создает тестовую задачу"""
+    from src.job_radar.models.task import SearchTask, TaskStatus
+    
+    task = SearchTask(
+        source_id=test_source.id,
+        keyword="python",
+        status=TaskStatus.NEW
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@pytest.fixture
+def test_vacancy(session, test_task):
+    """Создает тестовую вакансию"""
+    from src.job_radar.models.vacancy import Vacancy
+    
+    vacancy = Vacancy(
+        task_id=test_task.id,
+        title="Python Developer",
+        url="https://example.com/vacancy/1"
+    )
+    session.add(vacancy)
+    session.commit()
+    session.refresh(vacancy)
+    return vacancy
+
+
+@pytest.fixture
+def test_log(session, test_task):
+    """Создает тестовый лог"""
+    from src.job_radar.models.log import Log
+    
+    log = Log(
+        task_id=test_task.id,
+        level="INFO",
+        message="Test log message"
+    )
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    return log
