@@ -15,5 +15,5 @@ poetry self add poetry-plugin-shell
 poetry shell
 
 # 4. Запуск проекта
-python main.py
+python -m job_radar.main
 ```
