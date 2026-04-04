@@ -1,4 +1,3 @@
-# ===== FILE: models/vacancy.py =====
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
