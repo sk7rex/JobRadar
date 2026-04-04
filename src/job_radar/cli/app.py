@@ -202,6 +202,21 @@ def _list_logs_command(limit: int = 20) -> None:
             )
         console.print(table)
 
+def _parse_url_command(url: str) -> None:
+    """Функция для одиночного парсинга вакансии по ссылке"""
+    console.print(f"[yellow]Скачиваем и парсим {url}...[/yellow]")
+    with get_session() as session:
+        manager = TaskManager(session)
+        try:
+            vacancy = manager.download_and_save_vacancy(url)
+            console.print(f"[bold green]✔ Успешно![/bold green]")
+            console.print(f"  [cyan]ID:[/cyan] {vacancy.id}")
+            console.print(f"  [cyan]Должность:[/cyan] {vacancy.title}")
+            console.print(f"  [cyan]Компания:[/cyan] {vacancy.company}")
+            console.print(f"  [cyan]Файл сохранен в:[/cyan] {vacancy.file_path}")
+        except Exception as e:
+            console.print(f"[bold red]Ошибка при парсинге:[/bold red] {e}")
+
 
 # --- CLI КОМАНДЫ (TYPER) ---
 
@@ -231,6 +246,9 @@ def list_vacancies(limit: int = 10): _list_vacancies_command(limit)
 
 @app.command(name="logs")
 def list_logs(limit: int = 20): _list_logs_command(limit)
+
+@app.command(name="parse")
+def parse_url(url: str): _parse_url_command(url)
 
 
 # --- ИНТЕРАКТИВНЫЙ РЕЖИМ ---
@@ -264,6 +282,7 @@ def interactive():
                     "  [green]sources[/green]                      - Показать источники\n"
                     "  [green]vacancies [n][/green]                - Показать вакансии\n"
                     "  [green]logs [n][/green]                     - Показать логи\n"
+                    "  [green]parse <url>[/green]                 - Скачать и спарсить вакансию по ссылке\n"
                     "  [green]exit[/green]                         - Выход"
                 )
                 continue
@@ -335,6 +354,12 @@ def interactive():
             elif cmd == "logs":
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
                 _list_logs_command(limit)
+            
+            elif cmd == "parse":
+                if len(parts) != 2:
+                    console.print("[red]Использование: parse <url>[/red]")
+                else:
+                    _parse_url_command(parts[1])
 
             else:
                 console.print(f"[red]Неизвестная команда:[/red] {cmd}. Введите help.")
