@@ -1,13 +1,16 @@
-from datetime import datetime  # <--- Добавляем импорт
+from datetime import datetime
 from typing import List
+from typing import Optional
 
 from sqlalchemy.orm import selectinload
 from sqlmodel import select, Session
 
+from src.job_radar.config import HTML_STORAGE_DIR
 from src.job_radar.models.log import Log
 from src.job_radar.models.source import Source
 from src.job_radar.models.task import SearchTask, TaskStatus
 from src.job_radar.models.vacancy import Vacancy
+from src.job_radar.services.parser import fetch_html, parse_hh_vacancy
 
 
 class TaskManager:
@@ -124,7 +127,7 @@ class TaskManager:
         return True
 
     # --- ИСТОЧНИКИ (SOURCES) ---
-    
+
     def list_sources(self) -> List[Source]:
         return self.session.exec(select(Source)).all()
 
@@ -174,3 +177,59 @@ class TaskManager:
             .limit(limit)
         )
         return self.session.exec(query).all()
+
+    def download_and_save_vacancy(self, url: str, task_id: Optional[int] = None) -> Vacancy:
+        existing_vacancy = self.session.exec(select(Vacancy).where(Vacancy.url == url)).first()
+        if existing_vacancy:
+            raise ValueError(f"Вакансия {url} уже есть в БД (ID: {existing_vacancy.id}).")
+
+        # Определяем, к какой задаче привязать
+        if task_id:
+            # Проверяем, существует ли переданная задача
+            t = self.session.get(SearchTask, task_id)
+            if not t: 
+                raise ValueError(f"Задача с ID {task_id} не найдена.")
+            actual_task_id = task_id
+        else:
+            # Ничего не передали -> берем дефолтную 'unknown -> manual_parsing'
+            manual_task = self.session.exec(select(SearchTask).where(SearchTask.keyword == "manual_parsing")).first()
+            if not manual_task:
+                raise ValueError("Сделайте init. Нет базовой задачи для ручного парсинга.")
+            actual_task_id = manual_task.id
+
+        # Парсим
+        html_content = fetch_html(url)
+        parsed_data = parse_hh_vacancy(html_content)
+
+        # Сохраняем в БД
+        vacancy = Vacancy(
+            task_id=actual_task_id,
+            url=url,
+            title=parsed_data["title"] or "No Title",
+            company=parsed_data["company"],
+            city=parsed_data["city"],
+            description=parsed_data["description"],
+            salary_from=parsed_data["salary_from"],
+            salary_to=parsed_data["salary_to"],
+            published_at=parsed_data["published_at"]
+        )
+        self.session.add(vacancy)
+        self.session.commit()
+        self.session.refresh(vacancy)
+
+        # Сохраняем HTML локально
+        file_name = f"vacancy_{vacancy.id}.html"
+        file_path = HTML_STORAGE_DIR / file_name
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        vacancy.file_path = str(file_path)
+        
+        log = Log(task_id=actual_task_id, level="INFO", message=f"Saved vacancy {vacancy.id} locally")
+        self.session.add(log)
+        
+        self.session.add(vacancy)
+        self.session.commit()
+        self.session.refresh(vacancy)
+
+        return vacancy

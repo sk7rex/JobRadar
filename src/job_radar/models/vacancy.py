@@ -22,5 +22,6 @@ class Vacancy(SQLModel, table=True):
     url: str = Field(unique=True, description="Ссылка для дедупликации")
     published_at: Optional[datetime] = Field(default=None)
 
-    # Связь: Много вакансий -> Одна задача
+    file_path: Optional[str] = Field(default=None, description="Путь к локальному HTML файлу")
+
     task: "SearchTask" = Relationship(back_populates="vacancies")

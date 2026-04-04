@@ -203,6 +203,38 @@ def _list_logs_command(limit: int = 20) -> None:
         console.print(table)
 
 
+def _parse_url_command(url: str, task_id: int = None) -> None: # Убрали source_id
+    console.print(f"[yellow]Скачиваем и парсим {url}...[/yellow]")
+    with get_session() as session:
+        manager = TaskManager(session)
+        try:
+            # Передаем только url и task_id
+            vacancy = manager.download_and_save_vacancy(url, task_id)
+            console.print(f"[bold green]✔ Успешно сохранено![/bold green]")
+            
+            table = Table(show_header=False, box=None)
+            table.add_column("Поле", style="cyan", justify="right")
+            table.add_column("Значение", style="white")
+            
+            table.add_row("ID вакансии", str(vacancy.id))
+            table.add_row("Task ID", str(vacancy.task_id))
+            table.add_row("Должность", str(vacancy.title))
+            table.add_row("Компания", str(vacancy.company))
+            table.add_row("Город", str(vacancy.city)) # Теперь тут будет просто "Санкт-Петербург"
+            table.add_row("З/П от", str(vacancy.salary_from))
+            table.add_row("З/П до", str(vacancy.salary_to))
+            table.add_row("Дата публ.", str(vacancy.published_at))
+            table.add_row("URL", str(vacancy.url))
+            table.add_row("Путь к HTML", str(vacancy.file_path))
+            
+            desc_snippet = (vacancy.description[:80] + "...") if vacancy.description else "None"
+            table.add_row("Описание", desc_snippet)
+            
+            console.print(table)
+        except Exception as e:
+            console.print(f"[bold red]Ошибка при парсинге:[/bold red] {e}")
+
+
 # --- CLI КОМАНДЫ (TYPER) ---
 
 @app.command()
@@ -231,6 +263,10 @@ def list_vacancies(limit: int = 10): _list_vacancies_command(limit)
 
 @app.command(name="logs")
 def list_logs(limit: int = 20): _list_logs_command(limit)
+
+
+@app.command(name="parse")
+def parse_url(url: str): _parse_url_command(url)
 
 
 # --- ИНТЕРАКТИВНЫЙ РЕЖИМ ---
@@ -264,6 +300,7 @@ def interactive():
                     "  [green]sources[/green]                      - Показать источники\n"
                     "  [green]vacancies [n][/green]                - Показать вакансии\n"
                     "  [green]logs [n][/green]                     - Показать логи\n"
+                    "  [green]parse <url> <task_id>[/green]            - Спарсить по ссылке (task_id опционально)\n"
                     "  [green]exit[/green]                         - Выход"
                 )
                 continue
@@ -335,6 +372,15 @@ def interactive():
             elif cmd == "logs":
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
                 _list_logs_command(limit)
+
+            elif cmd == "parse":
+                if len(parts) < 2:
+                    console.print("[red]Использование: parse <url> [task_id][/red]")
+                else:
+                    url = parts[1]
+                    # Берем task_id, если он передан (это 3-й элемент массива parts)
+                    tsk_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+                    _parse_url_command(url, tsk_id)
 
             else:
                 console.print(f"[red]Неизвестная команда:[/red] {cmd}. Введите help.")
