@@ -22,7 +22,7 @@ class Vacancy(SQLModel, table=True):
     description: Optional[str] = Field(default=None)
     url: str = Field(unique=True, description="Ссылка для дедупликации")
     published_at: Optional[datetime] = Field(default=None)
-    
+
     file_path: Optional[str] = Field(default=None, description="Путь к локальному HTML файлу")
 
     task: "SearchTask" = Relationship(back_populates="vacancies")
