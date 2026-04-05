@@ -14,6 +14,16 @@ from src.job_radar.services.parser import fetch_html, parse_hh_vacancy
 
 
 class TaskManager:
+    VALID_TRANSITIONS = {
+        TaskStatus.NEW: {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
+        TaskStatus.IN_PROGRESS: {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
+        TaskStatus.FAILED: {TaskStatus.RETRIED, TaskStatus.CANCELLED},
+        TaskStatus.RETRIED: {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED},
+        TaskStatus.CANCELLED: {TaskStatus.RETRIED},
+        TaskStatus.COMPLETED: set(),  # Пустое множество -> терминальное состояние
+        TaskStatus.EXPIRED: set(),    # Пустое множество -> терминальное состояние
+    }
+
     def __init__(self, session: Session):
         self.session = session
 
@@ -67,13 +77,13 @@ class TaskManager:
 
     def update_task_status(self, task_id: int, new_status: str) -> SearchTask:
         """
-        Изменяет статус задачи.
+        Изменяет статус задачи с проверкой конечного автомата (FSM).
         """
         task = self.session.get(SearchTask, task_id)
         if not task:
             raise ValueError(f"Задача с ID {task_id} не найдена.")
 
-        # Пытаемся преобразовать строку в Enum
+        # Пытаемся преобразовать входную строку в Enum
         try:
             status_enum = TaskStatus(new_status.lower())
         except ValueError:
@@ -82,16 +92,30 @@ class TaskManager:
 
         old_status = task.status
         if old_status == status_enum:
-            return task  # Статус не изменился
+            return task  # Статус не изменился (ничего не делаем)
 
+        # === ПРОВЕРКА КОНЕЧНОГО АВТОМАТА (FSM) ===
+        allowed_next_states = self.VALID_TRANSITIONS.get(old_status, set())
+        
+        if status_enum not in allowed_next_states:
+            # Формируем красивую строку с доступными статусами для вывода ошибки
+            if allowed_next_states:
+                allowed_str = ", ".join([s.value for s in allowed_next_states])
+                error_msg = f"Нельзя перевести из '{old_status.value}' в '{status_enum.value}'. Разрешены только: {allowed_str}"
+            else:
+                error_msg = f"Задача в статусе '{old_status.value}' завершена (терминальное состояние), статус менять нельзя."
+            
+            raise ValueError(error_msg)
+
+        # Если проверка пройдена, меняем статус
         task.status = status_enum
         task.updated_at = datetime.now()
 
-        # Логируем изменение
+        # Логируем успешное изменение
         log = Log(
             task_id=task.id,
             level="INFO",
-            message=f"Status manually changed: {old_status.value} -> {status_enum.value}"
+            message=f"Status changed FSM: {old_status.value} -> {status_enum.value}"
         )
         self.session.add(log)
         self.session.add(task)
