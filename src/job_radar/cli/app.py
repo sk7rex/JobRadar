@@ -1,4 +1,5 @@
 import shlex
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -27,16 +28,18 @@ def _init_db_command() -> None:
         console.print(f"[bold red][ERROR] Ошибка инициализации:[/bold red] {e}")
 
 
-def _add_task_command(keyword: str, source: str) -> None:
+def _add_task_command(keyword: str, source: str, city: Optional[str] = None) -> None:
     with get_session() as session:
         manager = TaskManager(session)
         try:
-            task = manager.create_task(keyword, source)
+            task = manager.create_task(keyword, source, city)
             src_name = task.source_relation.name if task.source_relation else source
+            city_label = f" | Город: [cyan]{task.city}[/cyan]" if task.city else ""
             console.print(
                 f"[green][OK] Задача создана![/green] "
                 f"ID: [bold]{task.id}[/bold] | "
                 f"Ищем: [magenta]{task.keyword}[/magenta] @ [blue]{src_name}[/blue]"
+                f"{city_label}"
             )
         except ValueError as e:
             console.print(f"[bold red]Ошибка:[/bold red] {e}")
@@ -145,6 +148,135 @@ def _list_sources_command() -> None:
         console.print(table)
 
 
+def _show_task_stats_command(task_id: int) -> None:
+    with get_session() as session:
+        manager = TaskManager(session)
+        stats = manager.get_task_stats(task_id)
+        if not stats:
+            console.print(f"[red]Задача с ID {task_id} не найдена.[/red]")
+            return
+
+        task = stats["task"]
+        total = stats["total"]
+        console.print(f"\n[bold]Статистика задачи #{task_id}[/bold] — {task.keyword} @ {task.source_id}")
+
+        if total == 0:
+            console.print("[yellow]Вакансий нет.[/yellow]")
+            return
+
+        def pct(n): return f"{n}/{total} ({100 * n // total}%)"
+
+        # Полнота данных
+        completeness = Table(title="Полнота данных", show_header=False, box=None)
+        completeness.add_column("", style="cyan", justify="right")
+        completeness.add_column("", style="white")
+        completeness.add_row("Всего вакансий", str(total))
+        completeness.add_row("С зарплатой",   pct(stats["with_salary"]))
+        completeness.add_row("С городом",      pct(stats["with_city"]))
+        completeness.add_row("С датой",        pct(stats["with_date"]))
+        completeness.add_row("С описанием",    pct(stats["with_description"]))
+        console.print(completeness)
+
+        # Зарплаты
+        if stats["salary_min"] is not None:
+            salary_table = Table(title="Зарплаты (руб.)", show_header=False, box=None)
+            salary_table.add_column("", style="cyan", justify="right")
+            salary_table.add_column("", style="green")
+            salary_table.add_row("Минимум", f"{stats['salary_min']:,}")
+            salary_table.add_row("Медиана", f"{stats['salary_median']:,}")
+            salary_table.add_row("Максимум", f"{stats['salary_max']:,}")
+            console.print(salary_table)
+
+        # Даты
+        if stats["date_min"] is not None:
+            date_table = Table(title="Даты публикации", show_header=False, box=None)
+            date_table.add_column("", style="cyan", justify="right")
+            date_table.add_column("", style="white")
+            date_table.add_row("Самая старая", stats["date_min"].strftime("%d.%m.%Y"))
+            date_table.add_row("Самая свежая", stats["date_max"].strftime("%d.%m.%Y"))
+            console.print(date_table)
+
+        # Топ компаний
+        if stats["top_companies"]:
+            companies_table = Table(title="Топ компаний", show_header=False, box=None)
+            companies_table.add_column("", style="yellow")
+            companies_table.add_column("", style="dim", justify="right")
+            for company, count in stats["top_companies"]:
+                companies_table.add_row(company, str(count))
+            console.print(companies_table)
+
+
+def _show_vacancy_command(vacancy_id: int) -> None:
+    with get_session() as session:
+        manager = TaskManager(session)
+        v = manager.get_vacancy(vacancy_id)
+        if not v:
+            console.print(f"[red]Вакансия с ID {vacancy_id} не найдена.[/red]")
+            return
+
+        table = Table(show_header=False, box=None, title=f"Вакансия #{v.id}")
+        table.add_column("Поле", style="cyan", justify="right")
+        table.add_column("Значение", style="white")
+
+        salary = "—"
+        if v.salary_from: salary = f"от {v.salary_from}"
+        if v.salary_to: salary += f" до {v.salary_to}"
+
+        table.add_row("ID", str(v.id))
+        table.add_row("Task ID", str(v.task_id))
+        table.add_row("Должность", v.title or "—")
+        table.add_row("Компания", v.company or "—")
+        table.add_row("Город", v.city or "—")
+        table.add_row("Зарплата", salary)
+        table.add_row("Дата публ.", str(v.published_at) if v.published_at else "—")
+        table.add_row("URL", v.url or "—")
+        table.add_row("Путь к HTML", v.file_path or "—")
+        desc = (v.description[:200] + "...") if v.description and len(v.description) > 200 else (v.description or "—")
+        table.add_row("Описание", desc)
+
+        console.print(table)
+
+
+def _list_task_vacancies_command(task_id: int) -> None:
+    from src.job_radar.models.task import SearchTask
+    with get_session() as session:
+        manager = TaskManager(session)
+        task = session.get(SearchTask, task_id)
+        if not task:
+            console.print(f"[red]Задача с ID {task_id} не найдена.[/red]")
+            return
+
+        vacancies = manager.list_vacancies_by_task(task_id)
+        if not vacancies:
+            console.print(f"[yellow]По задаче #{task_id} вакансий нет.[/yellow]")
+            return
+
+        table = Table(title=f"Вакансии задачи #{task_id} ({task.keyword}), всего: {len(vacancies)}")
+        table.add_column("ID", style="cyan", no_wrap=True)
+        table.add_column("Должность", style="bold white")
+        table.add_column("Компания", style="yellow")
+        table.add_column("Город", style="green")
+        table.add_column("Зарплата", style="magenta")
+        table.add_column("URL", style="dim", no_wrap=True)
+
+        for v in vacancies:
+            salary = "—"
+            if v.salary_from:
+                salary = f"от {v.salary_from}"
+            if v.salary_to:
+                salary += f" до {v.salary_to}"
+
+            table.add_row(
+                str(v.id),
+                v.title[:45] if v.title else "—",
+                v.company[:30] if v.company else "—",
+                v.city or "—",
+                salary,
+                v.url[:50] if v.url else "—",
+            )
+        console.print(table)
+
+
 def _list_vacancies_command(limit: int = 10) -> None:
     with get_session() as session:
         manager = TaskManager(session)
@@ -203,6 +335,130 @@ def _list_logs_command(limit: int = 20) -> None:
         console.print(table)
 
 
+def _run_tasks_command(task_id: Optional[int] = None, headless: bool = True) -> None:
+    from sqlalchemy.orm import selectinload
+    from sqlmodel import select
+
+    from src.job_radar.models.task import SearchTask
+    from src.job_radar.services.crawler import JobCrawler
+
+    with get_session() as session:
+        manager = TaskManager(session)
+
+        if task_id is not None:
+            task = session.exec(
+                select(SearchTask)
+                .options(selectinload(SearchTask.source_relation))
+                .where(SearchTask.id == task_id)
+            ).first()
+            if not task:
+                console.print(f"[red]Задача {task_id} не найдена.[/red]")
+                return
+            tasks = [task]
+        else:
+            tasks = manager.get_pending_tasks()
+
+        if not tasks:
+            console.print("[yellow]Нет задач со статусом NEW.[/yellow]")
+            return
+
+        def _crawler_log(msg: str) -> None:
+            console.print(f"  [dim]{msg}[/dim]")
+
+        crawler = JobCrawler(headless=headless, log=_crawler_log)
+
+        for task in tasks:
+            source_name = task.source_relation.name if task.source_relation else ""
+            city = task.city
+            label = f"[bold]#{task.id}[/bold] {task.keyword} @ {source_name}"
+            if city:
+                label += f" [{city}]"
+            console.print(f"\nЗадача {label}")
+
+            try:
+                manager.update_task_status(task.id, "in_progress")
+            except ValueError as e:
+                console.print(f"  [red]Нельзя запустить: {e}[/red]")
+                continue
+
+            try:
+                import time as _time
+                from collections import Counter
+
+                console.print("  [yellow]Запуск браузера...[/yellow]")
+                run_start = _time.time()
+                vacancies = crawler.crawl(task.keyword, source_name, city)
+                elapsed = _time.time() - run_start
+
+                saved = skipped = errors = 0
+                for v in vacancies:
+                    try:
+                        manager.save_parsed_vacancy(task.id, v)
+                        saved += 1
+                    except ValueError:
+                        skipped += 1
+                    except Exception:
+                        errors += 1
+
+                manager.update_task_status(task.id, "completed")
+
+                total = len(vacancies)
+                mins, secs = divmod(int(elapsed), 60)
+                elapsed_str = f"{mins}м {secs}с" if mins else f"{secs}с"
+
+                console.print(
+                    f"  [green]✔ Завершено![/green] "
+                    f"Найдено: [bold]{total}[/bold] | "
+                    f"Сохранено: [green]{saved}[/green] | "
+                    f"Дубли: [yellow]{skipped}[/yellow] | "
+                    f"Ошибки: [red]{errors}[/red] | "
+                    f"Время: [cyan]{elapsed_str}[/cyan]"
+                )
+
+                if total > 0:
+                    with_salary = sum(1 for v in vacancies if v.get("salary_from") or v.get("salary_to"))
+                    with_city   = sum(1 for v in vacancies if v.get("city"))
+                    with_date   = sum(1 for v in vacancies if v.get("published_at"))
+                    with_desc   = sum(1 for v in vacancies if v.get("description"))
+
+                    salaries = [v["salary_from"] for v in vacancies if v.get("salary_from")]
+                    dates    = [v["published_at"] for v in vacancies if v.get("published_at")]
+                    companies = Counter(v.get("company") for v in vacancies if v.get("company"))
+
+                    def _pct(n): return f"{n}/{total} ({100 * n // total}%)"
+
+                    summary = Table(title="Сводка прогона", show_header=False, box=None, padding=(0, 2))
+                    summary.add_column("", style="cyan", justify="right")
+                    summary.add_column("", style="white")
+
+                    summary.add_row("Общее время",   elapsed_str)
+                    summary.add_row("С зарплатой",   _pct(with_salary))
+                    summary.add_row("С городом",     _pct(with_city))
+                    summary.add_row("С датой",       _pct(with_date))
+                    summary.add_row("С описанием",   _pct(with_desc))
+
+                    if salaries:
+                        summary.add_row("Зарплата мин",    f"{min(salaries):,} ₽")
+                        summary.add_row("Зарплата медиана", f"{sorted(salaries)[len(salaries)//2]:,} ₽")
+                        summary.add_row("Зарплата макс",   f"{max(salaries):,} ₽")
+
+                    if dates:
+                        summary.add_row("Дата (старейшая)", min(dates).strftime("%d.%m.%Y"))
+                        summary.add_row("Дата (свежайшая)", max(dates).strftime("%d.%m.%Y"))
+
+                    if companies:
+                        top = ", ".join(f"{c} ({n})" for c, n in companies.most_common(5))
+                        summary.add_row("Топ компаний", top)
+
+                    console.print(summary)
+            except Exception as e:
+                try:
+                    manager.update_task_status(task.id, "failed")
+                except Exception:
+                    pass
+                console.print(f"  [bold red]✗ Ошибка:[/bold red] {e}")
+
+
 def _parse_url_command(url: str, task_id: int = None) -> None: # Убрали source_id
     console.print(f"[yellow]Скачиваем и парсим {url}...[/yellow]")
     with get_session() as session:
@@ -242,7 +498,17 @@ def init(): _init_db_command()
 
 
 @app.command()
-def add(keyword: str, source: str): _add_task_command(keyword, source)
+def add(
+    keyword: str,
+    source: str,
+    city: Optional[str] = typer.Argument(None, help="Город (например: Москва)"),
+): _add_task_command(keyword, source, city)
+
+
+@app.command()
+def run(
+    task_id: Optional[int] = typer.Argument(None, help="ID задачи (без аргумента — все NEW)"),
+): _run_tasks_command(task_id)
 
 
 @app.command(name="tasks")
@@ -259,6 +525,18 @@ def list_sources(): _list_sources_command()
 
 @app.command(name="vacancies")
 def list_vacancies(limit: int = 10): _list_vacancies_command(limit)
+
+
+@app.command(name="vacancy")
+def show_vacancy(vacancy_id: int): _show_vacancy_command(vacancy_id)
+
+
+@app.command(name="task-vacancies")
+def list_task_vacancies(task_id: int): _list_task_vacancies_command(task_id)
+
+
+@app.command(name="stats")
+def task_stats(task_id: int): _show_task_stats_command(task_id)
 
 
 @app.command(name="logs")
@@ -290,18 +568,22 @@ def interactive():
             if cmd == "help":
                 console.print(
                     "\n[bold]Доступные команды:[/bold]\n"
-                    "  [green]init[/green]                         - Создать базу данных\n"
-                    "  [green]add <keyword> <source>[/green]               - Добавить задачу (напр: add python hh)\n"
-                    "  [green]status <id> <new_status>[/green]            - Изменить статус задачи\n"
-                    "  [green]add source <name> <url>[/green]      - Добавить новый источник\n"
-                    "  [green]rm task <id>[/green]                 - Удалить задачу\n"
-                    "  [green]rm source <name>[/green]             - Удалить источник\n"
-                    "  [green]tasks [n][/green]                    - Показать задачи (n=кол-во)\n"
-                    "  [green]sources[/green]                      - Показать источники\n"
-                    "  [green]vacancies [n][/green]                - Показать вакансии\n"
-                    "  [green]logs [n][/green]                     - Показать логи\n"
-                    "  [green]parse <url> <task_id>[/green]            - Спарсить по ссылке (task_id опционально)\n"
-                    "  [green]exit[/green]                         - Выход"
+                    "  [green]init[/green]                              - Создать базу данных\n"
+                    "  [green]add <keyword> <source> [--city <город>][/green] - Добавить задачу (напр: add python hh --city Москва)\n"
+                    "  [green]run [task_id][/green]                     - Запустить краулер (все NEW или конкретная)\n"
+                    "  [green]status <id> <new_status>[/green]          - Изменить статус задачи\n"
+                    "  [green]add source <name> <url>[/green]           - Добавить новый источник\n"
+                    "  [green]rm task <id>[/green]                      - Удалить задачу\n"
+                    "  [green]rm source <name>[/green]                  - Удалить источник\n"
+                    "  [green]tasks [n][/green]                         - Показать задачи\n"
+                    "  [green]sources[/green]                           - Показать источники\n"
+                    "  [green]vacancies [n][/green]                     - Показать вакансии\n"
+                    "  [green]vacancy <id>[/green]                      - Полная информация о вакансии\n"
+                    "  [green]task-vacancies <task_id>[/green]          - Все вакансии по задаче\n"
+                    "  [green]stats <task_id>[/green]                   - Статистика по задаче\n"
+                    "  [green]logs [n][/green]                          - Показать логи\n"
+                    "  [green]parse <url> [task_id][/green]             - Спарсить по ссылке\n"
+                    "  [green]exit[/green]                              - Выход"
                 )
                 continue
 
@@ -311,7 +593,6 @@ def interactive():
                 _init_db_command()
 
             elif cmd == "add":
-                # Проверяем, добавляем ли мы источник или задачу
                 if len(parts) > 1 and parts[1].lower() == "source":
                     # Формат: add source linkedin https://...
                     if len(parts) != 4:
@@ -319,16 +600,31 @@ def interactive():
                     else:
                         _add_source_command(parts[2], parts[3])
                 else:
-                    # Обычная задача: add python hh
-                    if len(parts) < 3:
-                        console.print("[red]Использование: add <keyword> <source>[/red]")
-                    else:
-                        # Собираем keyword, если он из нескольких слов, а source последнее
-                        if len(parts) == 3:
-                            kw, src = parts[1], parts[2]
+                    # Извлекаем --city VALUE, если есть
+                    city = None
+                    if "--city" in parts:
+                        idx = parts.index("--city")
+                        if idx + 1 < len(parts):
+                            city = parts[idx + 1]
+                            parts = parts[:idx] + parts[idx + 2:]
                         else:
-                            kw, src = " ".join(parts[1:-1]), parts[-1]
-                        _add_task_command(kw, src)
+                            console.print("[red]--city требует значение, например: --city Москва[/red]")
+                            continue
+
+                    # add <keyword> <source> [--city <город>]
+                    if len(parts) < 3:
+                        console.print("[red]Использование: add <keyword> <source> [--city <город>][/red]")
+                    elif len(parts) == 3:
+                        _add_task_command(parts[1], parts[2], city)
+                    else:
+                        # Многословный keyword: всё кроме последнего токена = keyword, последний = source
+                        kw = " ".join(parts[1:-1])
+                        src = parts[-1]
+                        _add_task_command(kw, src, city)
+
+            elif cmd == "run":
+                tsk_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+                _run_tasks_command(tsk_id)
 
             elif cmd == "status":
                 if len(parts) != 3:
@@ -368,6 +664,24 @@ def interactive():
             elif cmd == "vacancies":
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 10
                 _list_vacancies_command(limit)
+
+            elif cmd == "vacancy":
+                if len(parts) < 2 or not parts[1].isdigit():
+                    console.print("[red]Использование: vacancy <id>[/red]")
+                else:
+                    _show_vacancy_command(int(parts[1]))
+
+            elif cmd == "task-vacancies":
+                if len(parts) < 2 or not parts[1].isdigit():
+                    console.print("[red]Использование: task-vacancies <task_id>[/red]")
+                else:
+                    _list_task_vacancies_command(int(parts[1]))
+
+            elif cmd == "stats":
+                if len(parts) < 2 or not parts[1].isdigit():
+                    console.print("[red]Использование: stats <task_id>[/red]")
+                else:
+                    _show_task_stats_command(int(parts[1]))
 
             elif cmd == "logs":
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
