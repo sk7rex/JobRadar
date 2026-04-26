@@ -1,9 +1,9 @@
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine, Session, select
 
 from src.job_radar.config import DATABASE_URL, DEFAULT_SOURCES
 from src.job_radar.models.source import Source
-from src.job_radar.models.task import SearchTask, TaskStatus  # <-- ДОБАВИЛИ ИМПОРТ
+from src.job_radar.models.task import SearchTask, TaskStatus
 
 engine = create_engine(
     DATABASE_URL,
@@ -35,6 +35,15 @@ def seed_sources(session: Session):
     return False
 
 
+def _run_migrations() -> None:
+    inspector = inspect(engine)
+    columns = [col["name"] for col in inspector.get_columns("search_tasks")]
+    if "city" not in columns:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE search_tasks ADD COLUMN city VARCHAR"))
+            conn.commit()
+
+
 def init_db() -> str:
     inspector = inspect(engine)
     existing_tables = inspector.get_table_names()
@@ -45,6 +54,7 @@ def init_db() -> str:
             seed_sources(session)
         return "created"
 
+    _run_migrations()
     return "exists"
 
 

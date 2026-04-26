@@ -40,6 +40,7 @@ class SearchTask(SQLModel, table=True):
     source_id: int = Field(foreign_key="sources.id", description="Ссылка на источник")
 
     keyword: str = Field(index=True, description="Ключевое слово поиска")
+    city: Optional[str] = Field(default=None, description="Город для фильтрации")
     status: TaskStatus = Field(default=TaskStatus.NEW, description="Текущий статус")
     items_found: int = Field(default=0, description="Количество найденных вакансий")
 
