@@ -29,7 +29,7 @@ class TaskManager:
 
     # --- ЗАДАЧИ (TASKS) ---
 
-    def create_task(self, keyword: str, source_name: str) -> SearchTask:
+    def create_task(self, keyword: str, source_name: str, city: Optional[str] = None) -> SearchTask:
         clean_kw = keyword.strip().lower()
         clean_src_name = source_name.strip().lower()
 
@@ -58,7 +58,7 @@ class TaskManager:
         if existing:
             raise ValueError(f"Такая задача уже в работе (ID: {existing.id}, Статус: {existing.status})")
 
-        task = SearchTask(keyword=clean_kw, source_id=source.id)
+        task = SearchTask(keyword=clean_kw, source_id=source.id, city=city)
         self.session.add(task)
         self.session.flush()
 
@@ -124,6 +124,15 @@ class TaskManager:
 
         return task
 
+    def get_pending_tasks(self) -> List[SearchTask]:
+        query = (
+            select(SearchTask)
+            .options(selectinload(SearchTask.source_relation))
+            .where(SearchTask.status == TaskStatus.NEW)
+            .order_by(SearchTask.created_at.asc())
+        )
+        return self.session.exec(query).all()
+
     def list_tasks(self, limit: int = 10) -> List[SearchTask]:
         query = (
             select(SearchTask)
@@ -183,7 +192,79 @@ class TaskManager:
         self.session.commit()
         return True
 
+    def save_parsed_vacancy(self, task_id: int, data: dict) -> Vacancy:
+        existing = self.session.exec(select(Vacancy).where(Vacancy.url == data["url"])).first()
+        if existing:
+            raise ValueError(f"Вакансия уже в БД (ID: {existing.id}).")
+
+        vacancy = Vacancy(
+            task_id=task_id,
+            url=data["url"],
+            title=data.get("title") or "No Title",
+            company=data.get("company"),
+            city=data.get("city"),
+            description=data.get("description"),
+            salary_from=data.get("salary_from"),
+            salary_to=data.get("salary_to"),
+            published_at=data.get("published_at"),
+        )
+        self.session.add(vacancy)
+
+        task = self.session.get(SearchTask, task_id)
+        if task:
+            task.items_found += 1
+            self.session.add(task)
+
+        log = Log(task_id=task_id, level="INFO", message=f"Saved vacancy: {data.get('title', '?')}")
+        self.session.add(log)
+
+        self.session.commit()
+        self.session.refresh(vacancy)
+        return vacancy
+
     # --- ДРУГОЕ ---
+
+    def get_vacancy(self, vacancy_id: int) -> Optional[Vacancy]:
+        return self.session.get(Vacancy, vacancy_id)
+
+    def list_vacancies_by_task(self, task_id: int) -> List[Vacancy]:
+        return self.session.exec(
+            select(Vacancy).where(Vacancy.task_id == task_id).order_by(Vacancy.id.asc())
+        ).all()
+
+    def get_task_stats(self, task_id: int) -> Optional[dict]:
+        task = self.session.get(SearchTask, task_id)
+        if not task:
+            return None
+
+        vacancies = self.session.exec(
+            select(Vacancy).where(Vacancy.task_id == task_id)
+        ).all()
+
+        total = len(vacancies)
+        if total == 0:
+            return {"task": task, "total": 0}
+
+        salaries = [v.salary_from for v in vacancies if v.salary_from is not None]
+        dates = [v.published_at for v in vacancies if v.published_at is not None]
+
+        from collections import Counter
+        company_counts = Counter(v.company for v in vacancies if v.company)
+
+        return {
+            "task": task,
+            "total": total,
+            "with_salary":      sum(1 for v in vacancies if v.salary_from or v.salary_to),
+            "with_city":        sum(1 for v in vacancies if v.city),
+            "with_date":        len(dates),
+            "with_description": sum(1 for v in vacancies if v.description),
+            "salary_min":       min(salaries) if salaries else None,
+            "salary_max":       max(salaries) if salaries else None,
+            "salary_median":    sorted(salaries)[len(salaries) // 2] if salaries else None,
+            "date_min":         min(dates) if dates else None,
+            "date_max":         max(dates) if dates else None,
+            "top_companies":    company_counts.most_common(5),
+        }
 
     def list_vacancies(self, limit: int = 10) -> List[Vacancy]:
         query = (
