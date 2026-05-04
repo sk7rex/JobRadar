@@ -6,7 +6,8 @@ from typing import Callable, Optional
 from urllib.parse import quote_plus
 
 from src.job_radar.config import (
-    CARD_RETRIES, HEADLESS, HH_CITY_IDS, HH_DEFAULT_AREA,
+    CARD_RETRIES, FETCH_DESCRIPTIONS,
+    HEADLESS, HH_CITY_IDS, HH_DEFAULT_AREA,
     MAX_PAGES, MAX_DELAY, MIN_DELAY, SUPERJOB_CITY_IDS,
 )
 
@@ -16,7 +17,13 @@ class JobCrawler:
         self.headless = headless
         self._log = log if log is not None else lambda msg: print(msg, flush=True)
 
-    def crawl(self, keyword: str, source: str, city: Optional[str] = None) -> list[dict]:
+    def crawl(
+        self,
+        keyword: str,
+        source: str,
+        city: Optional[str] = None,
+        known_urls: set[str] | None = None,
+    ) -> list[dict]:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
@@ -37,7 +44,7 @@ class JobCrawler:
                 if source == "hh":
                     return self._crawl_hh(page, keyword, city)
                 elif source == "superjob":
-                    return self._crawl_superjob(page, keyword, city)
+                    return self._crawl_superjob(page, keyword, city, known_urls or set())
                 else:
                     raise ValueError(f"Краулер не реализован для источника: {source}")
             finally:
@@ -124,10 +131,17 @@ class JobCrawler:
 
     # ── superjob.ru (Playwright, данные из карточек страницы поиска) ──────────
 
-    def _crawl_superjob(self, page, keyword: str, city: Optional[str]) -> list[dict]:
+    def _crawl_superjob(self, page, keyword: str, city: Optional[str], known_urls: set[str] = set()) -> list[dict]:
         from playwright.sync_api import TimeoutError as PWTimeout
 
-        city_id = SUPERJOB_CITY_IDS.get(city.strip().lower()) if city else None
+        city_id = None
+        if city:
+            city_id = SUPERJOB_CITY_IDS.get(city.strip().lower())
+            if city_id is None:
+                self._log(
+                    f"[superjob] ⚠ город '{city}' не найден в SUPERJOB_CITY_IDS — "
+                    f"поиск будет по всей России. Доступны: {', '.join(SUPERJOB_CITY_IDS)}"
+                )
         results = []
 
         for page_num in range(1, MAX_PAGES + 1):
@@ -208,6 +222,72 @@ class JobCrawler:
                 break
             self._delay()
 
+        if FETCH_DESCRIPTIONS and results:
+            new_results = [r for r in results if r["url"] not in known_urls]
+            skipped = len(results) - len(new_results)
+            if skipped:
+                self._log(f"[superjob] фаза 2: пропущено {skipped} дублей, загружаем {len(new_results)} новых описаний...")
+            else:
+                self._log(f"[superjob] фаза 2: {len(new_results)} описаний (блокировка ресурсов)...")
+            if new_results:
+                descs = self._fetch_descriptions(page, [r["url"] for r in new_results])
+                for item in new_results:
+                    desc = descs.get(item["url"])
+                    if desc:
+                        item["description"] = desc
+
+        return results
+
+    # ── description fetching ──────────────────────────────────────────────────
+
+    def _fetch_descriptions(self, page, urls: list[str]) -> dict[str, Optional[str]]:
+        """Загружает описания вакансий superjob, блокируя тяжёлые ресурсы."""
+        _BLOCK = "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf,eot,otf,mp4,avi,webm}"
+        # superjob description: div[class=""] > span.{css-modules} > span > {text/p + ul}
+        # Some vacancies wrap headers in <p>, others use plain text nodes — both variants exist.
+        # CSS module class names change on every build, so we target DOM structure only.
+        _SELECTORS = "div[class=''] > span > span"
+        _JS = """() => {
+            // Primary: exact structure observed on superjob vacancy pages
+            const el = document.querySelector('div[class=""] > span > span');
+            if (el && el.innerText.trim().length > 50) return el.innerText.trim();
+
+            // Fallback: largest span that contains <ul> items (job desc always has lists)
+            let best = null, bestLen = 50;
+            for (const span of document.querySelectorAll('span')) {
+                if (span.querySelector(':scope > ul')) {
+                    const t = span.innerText.trim();
+                    if (t.length > bestLen) { best = t; bestLen = t.length; }
+                }
+            }
+            return best;
+        }"""
+
+        def _abort(route):
+            route.abort()
+
+        page.route(_BLOCK, _abort)
+
+        results: dict[str, Optional[str]] = {}
+        total = len(urls)
+        for i, url in enumerate(urls, 1):
+            slug = url[url.rfind("/") + 1:][:50]
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=25_000)
+                try:
+                    page.wait_for_selector(_SELECTORS, timeout=6_000)
+                except Exception:
+                    results[url] = None
+                    self._log(f"[superjob] описание {i}/{total}: — {slug}")
+                    continue
+                desc = page.evaluate(_JS)
+                results[url] = desc
+                self._log(f"[superjob] описание {i}/{total}: {'✓' if desc else '—'} {slug}")
+            except Exception as e:
+                results[url] = None
+                self._log(f"[superjob] описание {i}/{total}: ошибка — {e}")
+
+        page.unroute(_BLOCK, _abort)
         return results
 
     # ── helpers ───────────────────────────────────────────────────────────────

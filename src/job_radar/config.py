@@ -8,18 +8,21 @@ HTML_STORAGE_DIR = BASE_DIR / "data" / "raw_html"
 HTML_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_SOURCES = [
-    {"name": "habr", "url": "https://career.habr.com", "is_active": True},
-    {"name": "hh", "url": "https://hh.ru", "is_active": True},
+    {"name": "habr", "url": "https://career.habr.com", "is_active": False},
+    {"name": "hh", "url": "https://hh.ru", "is_active": False},
     {"name": "geekjob", "url": "https://geekjob.ru", "is_active": False},
     {"name": "superjob", "url": "https://superjob.ru/", "is_active": True}
 ]
 
 # Crawler settings
-MAX_PAGES = 5
-HEADLESS = False
+MAX_PAGES = 14
+HEADLESS = True
 MIN_DELAY = 2.0
 MAX_DELAY = 5.0
 CARD_RETRIES = 1       # сколько раз повторить карточку при таймауте
+
+# Description fetching (Phase 2: visit each vacancy page for full description)
+FETCH_DESCRIPTIONS = True
 
 # hh.ru area IDs (https://api.hh.ru/areas)
 HH_CITY_IDS: dict[str, int] = {
