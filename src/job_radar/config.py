@@ -8,7 +8,7 @@ HTML_STORAGE_DIR = BASE_DIR / "data" / "raw_html"
 HTML_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_SOURCES = [
-    {"name": "habr", "url": "https://career.habr.com", "is_active": False},
+    {"name": "habr", "url": "https://career.habr.com", "is_active": True},
     {"name": "hh", "url": "https://hh.ru", "is_active": False},
     {"name": "geekjob", "url": "https://geekjob.ru", "is_active": False},
     {"name": "superjob", "url": "https://superjob.ru/", "is_active": True}
@@ -42,4 +42,18 @@ SUPERJOB_CITY_IDS: dict[str, int] = {
     "санкт-петербург": 14,
     "питер": 14,
     "спб": 14,
+}
+
+# career.habr.com location codes
+HABR_CITY_IDS: dict[str, str] = {
+    "москва": "c_679",
+    "moscow": "c_679",
+    "санкт-петербург": "c_678",
+    "питер": "c_678",
+    "спб": "c_678",
+    "saint-petersburg": "c_678",
+    "новосибирск": "c_1093",
+    "екатеринбург": "c_1106",
+    "казань": "c_1176",
+    "нижний новгород": "c_1149",
 }
