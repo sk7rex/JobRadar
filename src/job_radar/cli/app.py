@@ -82,6 +82,17 @@ def _delete_task_command(task_id: int) -> None:
             console.print(f"[bold red]Ошибка удаления:[/bold red] {e}")
 
 
+def _toggle_source_command(name: str, active: bool) -> None:
+    with get_session() as session:
+        manager = TaskManager(session)
+        try:
+            src = manager.toggle_source(name, active)
+            state = "[green]включён[/green]" if active else "[red]отключён[/red]"
+            console.print(f"[green]✔[/green] Источник [bold]{src.name}[/bold] {state}.")
+        except ValueError as e:
+            console.print(f"[bold red]Ошибка:[/bold red] {e}")
+
+
 def _delete_source_command(name: str) -> None:
     with get_session() as session:
         manager = TaskManager(session)
@@ -459,6 +470,27 @@ def _run_tasks_command(task_id: Optional[int] = None, headless: bool = True) -> 
                 console.print(f"  [bold red]✗ Ошибка:[/bold red] {e}")
 
 
+def _show_vacancy_description_command(vacancy_id: int) -> None:
+    with get_session() as session:
+        manager = TaskManager(session)
+        v = manager.get_vacancy(vacancy_id)
+        if not v:
+            console.print(f"[red]Вакансия с ID {vacancy_id} не найдена.[/red]")
+            return
+        if not v.description:
+            console.print(f"[yellow]У вакансии #{vacancy_id} нет описания.[/yellow]")
+            return
+        console.print(f"\n[bold]Описание вакансии #{v.id} — {v.title or ''}[/bold]\n")
+        console.print(v.description)
+
+
+def _count_vacancies_command() -> None:
+    with get_session() as session:
+        manager = TaskManager(session)
+        total = manager.count_vacancies()
+        console.print(f"Всего вакансий в базе: [bold cyan]{total}[/bold cyan]")
+
+
 def _parse_url_command(url: str, task_id: int = None) -> None: # Убрали source_id
     console.print(f"[yellow]Скачиваем и парсим {url}...[/yellow]")
     with get_session() as session:
@@ -523,12 +555,28 @@ def set_status(task_id: int, status: str): _set_status_command(task_id, status)
 def list_sources(): _list_sources_command()
 
 
+@app.command(name="enable-source")
+def enable_source(name: str): _toggle_source_command(name, True)
+
+
+@app.command(name="disable-source")
+def disable_source(name: str): _toggle_source_command(name, False)
+
+
 @app.command(name="vacancies")
 def list_vacancies(limit: int = 10): _list_vacancies_command(limit)
 
 
 @app.command(name="vacancy")
 def show_vacancy(vacancy_id: int): _show_vacancy_command(vacancy_id)
+
+
+@app.command(name="description")
+def show_vacancy_description(vacancy_id: int): _show_vacancy_description_command(vacancy_id)
+
+
+@app.command(name="count")
+def count_vacancies(): _count_vacancies_command()
 
 
 @app.command(name="task-vacancies")
@@ -577,8 +625,12 @@ def interactive():
                     "  [green]rm source <name>[/green]                  - Удалить источник\n"
                     "  [green]tasks [n][/green]                         - Показать задачи\n"
                     "  [green]sources[/green]                           - Показать источники\n"
+                    "  [green]enable <source_name>[/green]              - Включить источник\n"
+                    "  [green]disable <source_name>[/green]             - Отключить источник\n"
                     "  [green]vacancies [n][/green]                     - Показать вакансии\n"
                     "  [green]vacancy <id>[/green]                      - Полная информация о вакансии\n"
+                    "  [green]description <id>[/green]                  - Полное описание вакансии\n"
+                    "  [green]count[/green]                             - Общее число вакансий в базе\n"
                     "  [green]task-vacancies <task_id>[/green]          - Все вакансии по задаче\n"
                     "  [green]stats <task_id>[/green]                   - Статистика по задаче\n"
                     "  [green]logs [n][/green]                          - Показать логи\n"
@@ -661,6 +713,12 @@ def interactive():
             elif cmd == "sources":
                 _list_sources_command()
 
+            elif cmd in ["enable", "disable"]:
+                if len(parts) < 2:
+                    console.print(f"[red]Использование: {cmd} <source_name>[/red]")
+                else:
+                    _toggle_source_command(parts[1], cmd == "enable")
+
             elif cmd == "vacancies":
                 limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 10
                 _list_vacancies_command(limit)
@@ -670,6 +728,15 @@ def interactive():
                     console.print("[red]Использование: vacancy <id>[/red]")
                 else:
                     _show_vacancy_command(int(parts[1]))
+
+            elif cmd == "description":
+                if len(parts) < 2 or not parts[1].isdigit():
+                    console.print("[red]Использование: description <id>[/red]")
+                else:
+                    _show_vacancy_description_command(int(parts[1]))
+
+            elif cmd == "count":
+                _count_vacancies_command()
 
             elif cmd == "task-vacancies":
                 if len(parts) < 2 or not parts[1].isdigit():

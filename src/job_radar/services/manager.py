@@ -176,6 +176,17 @@ class TaskManager:
         self.session.refresh(source)
         return source
 
+    def toggle_source(self, name: str, active: bool) -> Source:
+        clean_name = name.strip().lower()
+        source = self.session.exec(select(Source).where(Source.name == clean_name)).first()
+        if not source:
+            raise ValueError(f"Источник '{clean_name}' не найден.")
+        source.is_active = active
+        self.session.add(source)
+        self.session.commit()
+        self.session.refresh(source)
+        return source
+
     def delete_source(self, name: str) -> bool:
         clean_name = name.strip().lower()
         source = self.session.exec(select(Source).where(Source.name == clean_name)).first()
@@ -265,6 +276,10 @@ class TaskManager:
             "date_max":         max(dates) if dates else None,
             "top_companies":    company_counts.most_common(5),
         }
+
+    def count_vacancies(self) -> int:
+        from sqlmodel import func
+        return self.session.exec(select(func.count()).select_from(Vacancy)).one()
 
     def list_vacancies(self, limit: int = 10) -> List[Vacancy]:
         query = (
