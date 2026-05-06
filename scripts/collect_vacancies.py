@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Массовый сбор вакансий с superjob.ru до достижения 20 000 вакансий с описаниями.
+Массовый сбор вакансий с superjob.ru и career.habr.com до достижения 20 000 вакансий с описаниями.
 
 Запуск из корня проекта:
     python scripts/collect_vacancies.py
@@ -34,12 +34,11 @@ from src.job_radar.services.crawler import JobCrawler
 from src.job_radar.services.manager import TaskManager
 
 TARGET = 20_000
-SOURCE = "superjob"
 TASK_DELAY = 15  # пауза между тасками (сек)
 
 # Каждый элемент — строка (без города) или кортеж (keyword, city).
 # Городские вариации дают отдельную выдачу — снижают пересечения.
-KEYWORDS: list[str | tuple[str, str]] = [
+SUPERJOB_KEYWORDS: list[str | tuple[str, str]] = [
     # ── IT (минимальный набор, без синонимов) ──────────────────────────────
     "1с разработчик",
     "системный администратор",
@@ -237,6 +236,263 @@ KEYWORDS: list[str | tuple[str, str]] = [
     ("руководитель проекта", "москва"),
 ]
 
+# career.habr.com — преимущественно IT-вакансии
+HABR_KEYWORDS: list[str | tuple[str, str]] = [
+    # ── Разработка (языки) ─────────────────────────────────────────────────
+    "python разработчик",
+    "javascript разработчик",
+    "typescript разработчик",
+    "java разработчик",
+    "go разработчик",
+    "c++ разработчик",
+    "c# разработчик",
+    "php разработчик",
+    "ruby разработчик",
+    "swift разработчик",
+    "kotlin разработчик",
+    "scala разработчик",
+    "rust разработчик",
+    ("python разработчик", "москва"),
+    ("java разработчик", "москва"),
+    ("go разработчик", "москва"),
+    ("c++ разработчик", "москва"),
+    # ── Разработка (специализация) ─────────────────────────────────────────
+    "frontend разработчик",
+    "backend разработчик",
+    "fullstack разработчик",
+    "mobile разработчик",
+    "android разработчик",
+    "ios разработчик",
+    "react разработчик",
+    "vue разработчик",
+    "node.js разработчик",
+    ("frontend разработчик", "москва"),
+    ("fullstack разработчик", "москва"),
+    ("mobile разработчик", "москва"),
+    # ── Data / ML / AI ─────────────────────────────────────────────────────
+    "data engineer",
+    "data scientist",
+    "machine learning инженер",
+    "ml инженер",
+    "аналитик данных",
+    "bi аналитик",
+    "nlp инженер",
+    "компьютерное зрение",
+    ("data engineer", "москва"),
+    ("data scientist", "москва"),
+    ("machine learning инженер", "москва"),
+    # ── DevOps / Инфраструктура ────────────────────────────────────────────
+    "devops инженер",
+    "site reliability engineer",
+    "облачный инженер",
+    "kubernetes инженер",
+    "системный администратор linux",
+    "сетевой инженер",
+    "инженер по информационной безопасности",
+    "penetration tester",
+    ("devops инженер", "москва"),
+    ("devops инженер", "санкт-петербург"),
+    # ── QA ─────────────────────────────────────────────────────────────────
+    "qa инженер",
+    "тестировщик автоматизации",
+    "автоматизатор тестирования",
+    "ручное тестирование",
+    ("qa инженер", "москва"),
+    # ── Аналитика ──────────────────────────────────────────────────────────
+    "системный аналитик",
+    "бизнес аналитик",
+    "продуктовый аналитик",
+    "технический аналитик",
+    ("системный аналитик", "москва"),
+    ("бизнес аналитик", "москва"),
+    # ── Управление / Дизайн ───────────────────────────────────────────────
+    "product manager",
+    "product owner",
+    "проектный менеджер it",
+    "scrum master",
+    "технический директор",
+    "тимлид",
+    "архитектор программного обеспечения",
+    "ux дизайнер",
+    "ui дизайнер",
+    "ux ui дизайнер",
+    ("product manager", "москва"),
+    ("тимлид", "москва"),
+    ("ux ui дизайнер", "москва"),
+    # ── Базы данных ────────────────────────────────────────────────────────
+    "администратор баз данных",
+    "dba postgresql",
+    "dba oracle",
+    # ── Поддержка / Другое ─────────────────────────────────────────────────
+    "технический писатель",
+    "it рекрутер",
+    "менеджер it проектов",
+]
+
+# hh.ru — крупнейший российский агрегатор (IT + широкий рынок)
+HH_KEYWORDS: list[str | tuple[str, str]] = [
+    # ── IT (разработка) ───────────────────────────────────────────────────
+    "python разработчик",
+    "java разработчик",
+    "javascript разработчик",
+    "c++ разработчик",
+    "c# разработчик",
+    "go разработчик",
+    "php разработчик",
+    "frontend разработчик",
+    "backend разработчик",
+    "fullstack разработчик",
+    "mobile разработчик",
+    "android разработчик",
+    "ios разработчик",
+    ("python разработчик", "москва"),
+    ("java разработчик", "москва"),
+    ("frontend разработчик", "москва"),
+    ("backend разработчик", "москва"),
+    ("python разработчик", "санкт-петербург"),
+    # ── Data / ML ─────────────────────────────────────────────────────────
+    "data scientist",
+    "data engineer",
+    "machine learning инженер",
+    "аналитик данных",
+    "bi аналитик",
+    ("data scientist", "москва"),
+    ("аналитик данных", "москва"),
+    # ── DevOps / Инфраструктура ───────────────────────────────────────────
+    "devops инженер",
+    "системный администратор",
+    "сетевой инженер",
+    "инженер по информационной безопасности",
+    ("devops инженер", "москва"),
+    ("системный администратор", "москва"),
+    # ── QA ────────────────────────────────────────────────────────────────
+    "тестировщик",
+    "qa инженер",
+    "автоматизатор тестирования",
+    ("тестировщик", "москва"),
+    # ── Управление IT ─────────────────────────────────────────────────────
+    "product manager",
+    "технический директор",
+    "тимлид",
+    "scrum master",
+    "архитектор программного обеспечения",
+    ("product manager", "москва"),
+    ("тимлид", "москва"),
+    # ── Аналитика ─────────────────────────────────────────────────────────
+    "системный аналитик",
+    "бизнес аналитик",
+    ("системный аналитик", "москва"),
+    ("бизнес аналитик", "москва"),
+    # ── Финансы ───────────────────────────────────────────────────────────
+    "бухгалтер",
+    "финансовый аналитик",
+    "экономист",
+    "главный бухгалтер",
+    "финансовый директор",
+    "аудитор",
+    ("бухгалтер", "москва"),
+    ("бухгалтер", "санкт-петербург"),
+    ("экономист", "москва"),
+    # ── Продажи ───────────────────────────────────────────────────────────
+    "менеджер по продажам",
+    "торговый представитель",
+    "директор по продажам",
+    "менеджер по работе с клиентами",
+    "коммерческий директор",
+    ("менеджер по продажам", "москва"),
+    ("менеджер по продажам", "санкт-петербург"),
+    ("торговый представитель", "москва"),
+    # ── Маркетинг ─────────────────────────────────────────────────────────
+    "маркетолог",
+    "smm менеджер",
+    "seo специалист",
+    "контент менеджер",
+    "интернет маркетолог",
+    ("маркетолог", "москва"),
+    ("маркетолог", "санкт-петербург"),
+    # ── HR ────────────────────────────────────────────────────────────────
+    "рекрутер",
+    "hr менеджер",
+    "менеджер по персоналу",
+    "hr директор",
+    ("рекрутер", "москва"),
+    # ── Юриспруденция ─────────────────────────────────────────────────────
+    "юрист",
+    "юрисконсульт",
+    "корпоративный юрист",
+    ("юрист", "москва"),
+    ("юрист", "санкт-петербург"),
+    # ── Инженерия ─────────────────────────────────────────────────────────
+    "инженер конструктор",
+    "инженер проектировщик",
+    "главный инженер",
+    "инженер по охране труда",
+    ("инженер", "москва"),
+    ("инженер", "санкт-петербург"),
+    # ── Строительство ─────────────────────────────────────────────────────
+    "прораб",
+    "архитектор",
+    "проектировщик",
+    "сметчик",
+    ("прораб", "москва"),
+    ("архитектор", "москва"),
+    # ── Производство ──────────────────────────────────────────────────────
+    "электрик",
+    "сварщик",
+    "слесарь",
+    "механик",
+    "токарь",
+    ("электрик", "москва"),
+    ("сварщик", "москва"),
+    # ── Логистика ─────────────────────────────────────────────────────────
+    "логист",
+    "водитель",
+    "кладовщик",
+    "экспедитор",
+    "менеджер по закупкам",
+    "начальник склада",
+    ("водитель", "москва"),
+    ("водитель", "санкт-петербург"),
+    ("логист", "москва"),
+    ("кладовщик", "москва"),
+    # ── Медицина ──────────────────────────────────────────────────────────
+    "врач",
+    "медсестра",
+    "фармацевт",
+    "стоматолог",
+    "педиатр",
+    ("врач", "москва"),
+    ("врач", "санкт-петербург"),
+    ("фармацевт", "москва"),
+    # ── Образование ───────────────────────────────────────────────────────
+    "учитель",
+    "преподаватель",
+    "воспитатель",
+    "педагог",
+    ("учитель", "москва"),
+    ("воспитатель", "москва"),
+    # ── Административные ──────────────────────────────────────────────────
+    "офис менеджер",
+    "секретарь",
+    "администратор",
+    "помощник руководителя",
+    "оператор колл центра",
+    ("администратор", "москва"),
+    # ── Управление ────────────────────────────────────────────────────────
+    "руководитель проекта",
+    "операционный директор",
+    "генеральный директор",
+    "директор по развитию",
+    ("руководитель проекта", "москва"),
+]
+
+# Порядок источников: superjob (широкая выборка), hh (крупнейший агрегатор), habr (IT-фокус)
+PLAN: list[tuple[str, list]] = [
+    ("superjob", SUPERJOB_KEYWORDS),
+    ("hh",       HH_KEYWORDS),
+    ("habr",     HABR_KEYWORDS),
+]
+
 _stop = False
 
 
@@ -256,15 +512,15 @@ def _count_with_descriptions() -> int:
         ).one()
 
 
-def _is_completed(keyword: str, city: Optional[str] = None) -> bool:
-    """True если этот keyword+city+superjob уже успешно отработал."""
+def _is_completed(keyword: str, city: Optional[str], source: str) -> bool:
+    """True если этот keyword+city+source уже успешно отработал."""
     with get_session() as session:
-        source = session.exec(select(Source).where(Source.name == SOURCE)).first()
-        if not source:
+        src = session.exec(select(Source).where(Source.name == source)).first()
+        if not src:
             return False
         query = select(SearchTask).where(
             SearchTask.keyword == keyword.strip().lower(),
-            SearchTask.source_id == source.id,
+            SearchTask.source_id == src.id,
             SearchTask.status == TaskStatus.COMPLETED,
         )
         if city:
@@ -278,99 +534,108 @@ def main() -> None:
     signal.signal(signal.SIGINT, _on_sigint)
     init_db()
 
-    max_possible = len(KEYWORDS) * MAX_PAGES * 20
+    total_keywords = sum(len(kws) for _, kws in PLAN)
+    max_possible = total_keywords * MAX_PAGES * 20
     print(f"Цель:           {TARGET:,} вакансий с описаниями")
-    print(f"Ключевых слов:  {len(KEYWORDS)}")
+    print(f"Источники:      {', '.join(s for s, _ in PLAN)}")
+    kw_counts = ", ".join(f"{s}: {len(kws)}" for s, kws in PLAN)
+    print(f"Ключевых слов:  {total_keywords}  ({kw_counts})")
     print(f"MAX_PAGES:      {MAX_PAGES}  (~{max_possible:,} вакансий максимум)")
     if max_possible < TARGET:
         print(
-            f"\n[!] При MAX_PAGES={MAX_PAGES} и {len(KEYWORDS)} записях максимум ~{max_possible:,}.\n"
-            f"    Увеличьте MAX_PAGES до "
-            f"{-(-TARGET // (len(KEYWORDS) * 20))} или добавьте ключевых слов.\n"
+            f"\n[!] Максимум ~{max_possible:,} вакансий при текущих настройках.\n"
+            f"    Увеличьте MAX_PAGES или добавьте ключевых слов.\n"
         )
 
     session_start = time.time()
 
-    for idx, entry in enumerate(KEYWORDS, 1):
+    for source, keywords in PLAN:
         if _stop:
             break
+        print(f"\n{'═' * 50}")
+        print(f"Источник: {source}  ({len(keywords)} ключевых слов)")
+        print(f"{'═' * 50}")
 
-        count = _count_with_descriptions()
-        if count >= TARGET:
-            break
+        for idx, entry in enumerate(keywords, 1):
+            if _stop:
+                break
 
-        keyword, city = (entry[0], entry[1]) if isinstance(entry, tuple) else (entry, None)
-        label = f"'{keyword}'" + (f" [{city}]" if city else "")
-        remaining = TARGET - count
-        print(
-            f"\n[{count:>6,}/{TARGET:,}] осталось {remaining:,} | "
-            f"({idx}/{len(KEYWORDS)}) {label}",
-            flush=True,
-        )
+            count = _count_with_descriptions()
+            if count >= TARGET:
+                break
 
-        if _is_completed(keyword, city):
-            print("  → уже выполнено, пропуск")
-            continue
-
-        task_id: int | None = None
-        with get_session() as session:
-            manager = TaskManager(session)
-            try:
-                task = manager.create_task(keyword, SOURCE, city=city)
-                task_id = task.id
-                manager.update_task_status(task_id, "in_progress")
-            except ValueError as e:
-                print(f"  → {e}")
-                continue
-
-        saved = skipped = errors = with_desc = 0
-        try:
-            with get_session() as session:
-                known_urls = set(session.exec(select(Vacancy.url)).all())
-
-            crawler = JobCrawler(
-                headless=True,
-                log=lambda msg: print(f"  {msg}", flush=True),
-            )
-            t0 = time.time()
-            vacancies = crawler.crawl(keyword, SOURCE, city=city, known_urls=known_urls)
-            elapsed = time.time() - t0
-
-            with get_session() as session:
-                manager = TaskManager(session)
-                for v in vacancies:
-                    try:
-                        manager.save_parsed_vacancy(task_id, v)
-                        saved += 1
-                        if v.get("description"):
-                            with_desc += 1
-                    except ValueError:
-                        skipped += 1
-                    except Exception:
-                        errors += 1
-                manager.update_task_status(task_id, "completed")
-
-            m, s = divmod(int(elapsed), 60)
+            keyword, city = (entry[0], entry[1]) if isinstance(entry, tuple) else (entry, None)
+            label = f"'{keyword}'" + (f" [{city}]" if city else "")
+            remaining = TARGET - count
             print(
-                f"  ✓ {m}м {s}с | "
-                f"сохранено: {saved} | с описанием: {with_desc} | "
-                f"дубли: {skipped} | ошибки: {errors}",
+                f"\n[{count:>6,}/{TARGET:,}] осталось {remaining:,} | "
+                f"[{source}] ({idx}/{len(keywords)}) {label}",
                 flush=True,
             )
 
-        except Exception as e:
-            print(f"  ✗ Краулер упал: {e}", flush=True)
-            if task_id:
+            if _is_completed(keyword, city, source):
+                print("  → уже выполнено, пропуск")
+                continue
+
+            task_id: int | None = None
+            with get_session() as session:
+                manager = TaskManager(session)
+                try:
+                    task = manager.create_task(keyword, source, city=city)
+                    task_id = task.id
+                    manager.update_task_status(task_id, "in_progress")
+                except ValueError as e:
+                    print(f"  → {e}")
+                    continue
+
+            saved = skipped = errors = with_desc = 0
+            try:
+                with get_session() as session:
+                    known_urls = set(session.exec(select(Vacancy.url)).all())
+
+                crawler = JobCrawler(
+                    headless=True,
+                    log=lambda msg: print(f"  {msg}", flush=True),
+                )
+                t0 = time.time()
+                vacancies = crawler.crawl(keyword, source, city=city, known_urls=known_urls)
+                elapsed = time.time() - t0
+
                 with get_session() as session:
                     manager = TaskManager(session)
-                    try:
-                        manager.update_task_status(task_id, "failed")
-                    except Exception:
-                        pass
+                    for v in vacancies:
+                        try:
+                            manager.save_parsed_vacancy(task_id, v)
+                            saved += 1
+                            if v.get("description"):
+                                with_desc += 1
+                        except ValueError:
+                            skipped += 1
+                        except Exception:
+                            errors += 1
+                    manager.update_task_status(task_id, "completed")
 
-        if not _stop:
-            print(f"  → пауза {TASK_DELAY}с...", flush=True)
-            time.sleep(TASK_DELAY)
+                m, s = divmod(int(elapsed), 60)
+                print(
+                    f"  ✓ {m}м {s}с | "
+                    f"сохранено: {saved} | с описанием: {with_desc} | "
+                    f"дубли: {skipped} | ошибки: {errors}",
+                    flush=True,
+                )
+
+            except Exception as e:
+                print(f"  ✗ Краулер упал: {e}", flush=True)
+                if task_id:
+                    with get_session() as session:
+                        manager = TaskManager(session)
+                        try:
+                            manager.update_task_status(task_id, "failed")
+                        except Exception:
+                            pass
+
+            if not _stop:
+                print(f"  → пауза {TASK_DELAY}с...", flush=True)
+                time.sleep(TASK_DELAY)
 
     final = _count_with_descriptions()
     total_elapsed = time.time() - session_start
