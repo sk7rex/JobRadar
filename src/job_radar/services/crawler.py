@@ -22,7 +22,7 @@ class JobCrawler:
         keyword: str,
         source: str,
         city: Optional[str] = None,
-        known_urls: set[str] | None = None,
+        known_urls: Optional[set] = None,  # FIX #1: было set[str] | None = None (OK), но публичный метод уже правильный
     ) -> list[dict]:
         from playwright.sync_api import sync_playwright
 
@@ -41,12 +41,13 @@ class JobCrawler:
             )
             page = context.new_page()
             try:
+                _known = known_urls if known_urls is not None else set()
                 if source == "hh":
-                    return self._crawl_hh(page, keyword, city, known_urls or set())
+                    return self._crawl_hh(page, keyword, city, _known)
                 elif source == "superjob":
-                    return self._crawl_superjob(page, keyword, city, known_urls or set())
+                    return self._crawl_superjob(page, keyword, city, _known)
                 elif source == "habr":
-                    return self._crawl_habr(page, keyword, city, known_urls or set())
+                    return self._crawl_habr(page, keyword, city, _known)
                 else:
                     raise ValueError(f"Краулер не реализован для источника: {source}")
             finally:
@@ -54,8 +55,12 @@ class JobCrawler:
 
     # ── hh.ru (Playwright, данные из карточек страницы поиска) ────────────────
 
-    def _crawl_hh(self, page, keyword: str, city: Optional[str], known_urls: set[str] = set()) -> list[dict]:
+    def _crawl_hh(self, page, keyword: str, city: Optional[str],
+                  known_urls: Optional[set] = None) -> list[dict]:
         from playwright.sync_api import TimeoutError as PWTimeout
+
+        if known_urls is None:
+            known_urls = set()
 
         area = HH_CITY_IDS.get(city.strip().lower(), HH_DEFAULT_AREA) if city else HH_DEFAULT_AREA
         results = []
@@ -143,8 +148,12 @@ class JobCrawler:
 
     # ── superjob.ru (Playwright, данные из карточек страницы поиска) ──────────
 
-    def _crawl_superjob(self, page, keyword: str, city: Optional[str], known_urls: set[str] = set()) -> list[dict]:
+    def _crawl_superjob(self, page, keyword: str, city: Optional[str],
+                        known_urls: Optional[set] = None) -> list[dict]:
         from playwright.sync_api import TimeoutError as PWTimeout
+
+        if known_urls is None:
+            known_urls = set()
 
         city_id = None
         if city:
@@ -252,8 +261,12 @@ class JobCrawler:
 
     # ── career.habr.com ───────────────────────────────────────────────────────
 
-    def _crawl_habr(self, page, keyword: str, city: Optional[str], known_urls: set[str] = set()) -> list[dict]:
+    def _crawl_habr(self, page, keyword: str, city: Optional[str],
+                    known_urls: Optional[set] = None) -> list[dict]:
         from playwright.sync_api import TimeoutError as PWTimeout
+
+        if known_urls is None:
+            known_urls = set()
 
         city_code = None
         if city:
@@ -467,6 +480,10 @@ class JobCrawler:
         time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
 
 
+# ─────────────────────────────────────────────────────────────
+# Вспомогательные функции
+# ─────────────────────────────────────────────────────────────
+
 _MONTHS_RU = {
     "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
     "мая": 5, "июня": 6, "июля": 7, "августа": 8,
@@ -483,7 +500,12 @@ def _parse_ru_date(text: Optional[str]) -> Optional[datetime]:
         month = _MONTHS_RU.get(month_name)
         if month and day_str.isdigit():
             try:
-                return datetime(datetime.now().year, month, int(day_str))
+                now = datetime.now()
+                result = datetime(now.year, month, int(day_str))
+                # Если дата в будущем — была опубликована в прошлом году
+                if result > now:
+                    result = datetime(now.year - 1, month, int(day_str))
+                return result
             except ValueError:
                 return None
     return None
@@ -504,4 +526,5 @@ def _parse_salary(raw: Optional[str]) -> tuple[Optional[int], Optional[int]]:
         return None, numbers[0]
     if len(numbers) >= 2:
         return numbers[0], numbers[1]
-    return numbers[0], numbers[0]
+
+    return numbers[0], None

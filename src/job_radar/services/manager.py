@@ -12,7 +12,6 @@ from src.job_radar.models.task import SearchTask, TaskStatus
 from src.job_radar.models.vacancy import Vacancy
 from src.job_radar.services.parser import fetch_html, parse_hh_vacancy
 
-
 class TaskManager:
     VALID_TRANSITIONS = {
         TaskStatus.NEW: {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
@@ -224,6 +223,7 @@ class TaskManager:
         task = self.session.get(SearchTask, task_id)
         if task:
             task.items_found += 1
+            task.updated_at = datetime.now()
             self.session.add(task)
 
         log = Log(task_id=task_id, level="INFO", message=f"Saved vacancy: {data.get('title', '?')}")
@@ -334,7 +334,7 @@ class TaskManager:
             published_at=parsed_data["published_at"]
         )
         self.session.add(vacancy)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(vacancy)
 
         # Сохраняем HTML локально
