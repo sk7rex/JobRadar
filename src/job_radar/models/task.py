@@ -4,11 +4,13 @@ from typing import Optional, List, TYPE_CHECKING
 
 from sqlmodel import Field, SQLModel, Relationship
 
+from src.job_radar.models.log import Log
+
 # Импорты только для проверки типов, чтобы избежать циклической зависимости
 if TYPE_CHECKING:
     from src.job_radar.models.source import Source
     from src.job_radar.models.vacancy import Vacancy
-    from src.job_radar.models.log import Log
+    #from src.job_radar.models.log import Log
 
 
 class TaskStatus(str, Enum):

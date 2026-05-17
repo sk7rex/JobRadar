@@ -7,6 +7,9 @@ DATABASE_URL = f"sqlite:///{DB_FILE}"
 HTML_STORAGE_DIR = BASE_DIR / "data" / "raw_html"
 HTML_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+INDEX_DIR = BASE_DIR / "data" / "index"
+INDEX_DIR.mkdir(parents=True, exist_ok=True)
+
 DEFAULT_SOURCES = [
     {"name": "habr", "url": "https://career.habr.com", "is_active": True},
     {"name": "hh", "url": "https://hh.ru", "is_active": False},

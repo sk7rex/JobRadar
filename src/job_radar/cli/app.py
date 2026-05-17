@@ -10,6 +10,13 @@ from src.job_radar.database import init_db, get_session
 from src.job_radar.models.task import TaskStatus
 from src.job_radar.services.manager import TaskManager
 
+from sqlmodel import select
+from functools import lru_cache
+
+from src.job_radar.config import INDEX_DIR
+from src.job_radar.services.index.inverted_index import InvertedIndex
+from src.job_radar.models.vacancy import Vacancy
+
 app = typer.Typer(help="Job Radar Manager CLI")
 console = Console()
 
@@ -522,6 +529,95 @@ def _parse_url_command(url: str, task_id: int = None) -> None: # Убрали so
         except Exception as e:
             console.print(f"[bold red]Ошибка при парсинге:[/bold red] {e}")
 
+# ----- Инвертированный индекс -----
+def _index_build_command(variant: str = "all"):
+    console.print("[bold yellow]Загрузка вакансий из БД...[/bold yellow]")
+    with get_session() as session:
+        vacancies = session.exec(select(Vacancy)).all()
+        vac_list = [
+            {"id": v.id, "title": v.title or "", "description": v.description or ""}
+            for v in vacancies
+        ]
+    if not vac_list:
+        console.print("[red]Нет вакансий в базе. Сначала запустите сбор (jobradar run).[/red]")
+        return
+    console.print(f"Найдено вакансий: [bold]{len(vac_list)}[/bold]")
+
+    console.print("Построение индекса...")
+    import time
+    start = time.perf_counter()
+    idx = InvertedIndex()
+    idx.build(vac_list)
+    build_time = time.perf_counter() - start
+    console.print(f"[green]Индекс построен[/green] (токенов: {len(idx.dictionary)}), время: {build_time:.2f} с")
+
+    variants = ["plain", "delta", "gamma"] if variant == "all" else [variant]
+    for v in variants:
+        if v == "plain":
+            path = INDEX_DIR / "index_plain.json"
+            size = idx.save_plain(path)
+        elif v == "delta":
+            path = INDEX_DIR / "index_delta.bin"
+            size = idx.save_delta(path)
+        elif v == "gamma":
+            path = INDEX_DIR / "index_gamma.bin"
+            size = idx.save_gamma(path)
+        else:
+            console.print(f"[red]Неизвестный вариант: {v}[/red]")
+            continue
+        console.print(f"  {v}: сохранён в {path}, размер {size/1024/1024:.2f} МБ")
+
+
+
+def _index_search_command(query: str, variant: str = "plain", mode: str = "or", limit: int = 10):
+    path_map = {
+        "plain": INDEX_DIR / "index_plain.json",
+        "delta": INDEX_DIR / "index_delta.bin",
+        "gamma": INDEX_DIR / "index_gamma.bin",
+    }
+    path = path_map.get(variant)
+    if not path or not path.exists():
+        console.print(f"[red]Индекс {variant} не найден. Запустите 'jobradar index-build --variant {variant}'[/red]")
+        return
+
+    idx = InvertedIndex()
+    import time
+    load_start = time.perf_counter()
+    if variant == "plain":
+        idx.load_plain(path)
+    elif variant == "delta":
+        idx.load_delta(path)
+    else:
+        idx.load_gamma(path)
+    load_time = time.perf_counter() - load_start
+
+    search_start = time.perf_counter()
+    doc_ids = idx.search(query, mode=mode)
+    search_ms = (time.perf_counter() - search_start) * 1000
+
+    console.print(f"Поиск '{query}' (mode={mode}, variant={variant}) -> [bold]{len(doc_ids)}[/bold] документов")
+    console.print(f"  Загрузка индекса: {load_time:.3f} с, поиск: {search_ms:.2f} мс")
+
+    if not doc_ids:
+        console.print("[yellow]Ничего не найдено.[/yellow]")
+        return
+
+    with get_session() as session:
+        stmt = select(Vacancy).where(Vacancy.id.in_(doc_ids[:limit]))
+        vacancies = session.exec(stmt).all()
+
+    if not vacancies:
+        console.print("[yellow]Не удалось загрузить данные вакансий.[/yellow]")
+        return
+
+    table = Table(title=f"Результаты поиска по запросу: {query}")
+    table.add_column("ID", style="cyan")
+    table.add_column("Должность", style="bold white")
+    table.add_column("Компания", style="yellow")
+    table.add_column("Город", style="green")
+    for v in vacancies:
+        table.add_row(str(v.id), v.title[:60], v.company or "—", v.city or "—")
+    console.print(table)
 
 # --- CLI КОМАНДЫ (TYPER) ---
 
@@ -595,6 +691,21 @@ def list_logs(limit: int = 20): _list_logs_command(limit)
 def parse_url(url: str): _parse_url_command(url)
 
 
+@app.command(name="index-build")
+def index_build(variant: str = typer.Option("all", "--variant", help="plain, delta, gamma, all")):
+    """Построить инвертированный индекс по всем вакансиям."""
+    _index_build_command(variant)
+
+@app.command(name="index-search")
+def index_search(
+    query: str = typer.Argument(..., help="Поисковый запрос"),
+    variant: str = typer.Option("plain", "--variant", help="plain, delta, gamma"),
+    mode: str = typer.Option("or", "--mode", help="or, and"),
+    limit: int = typer.Option(10, "--limit", help="Максимум результатов"),
+):
+    """Поиск вакансий через инвертированный индекс."""
+    _index_search_command(query, variant, mode, limit)
+
 # --- ИНТЕРАКТИВНЫЙ РЕЖИМ ---
 
 @app.command()
@@ -635,6 +746,8 @@ def interactive():
                     "  [green]stats <task_id>[/green]                   - Статистика по задаче\n"
                     "  [green]logs [n][/green]                          - Показать логи\n"
                     "  [green]parse <url> [task_id][/green]             - Спарсить по ссылке\n"
+                    "  [green]index-build [--variant plain|delta|gamma|all][/green] - Построить инвертированный индекс\n"
+                    "  [green]index-search <query> [--variant plain|delta|gamma] [--mode or|and] [--limit N][/green] - Поиск по индексу\n"
                     "  [green]exit[/green]                              - Выход"
                 )
                 continue
@@ -762,11 +875,44 @@ def interactive():
                     # Берем task_id, если он передан (это 3-й элемент массива parts)
                     tsk_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
                     _parse_url_command(url, tsk_id)
+            
+            elif cmd == "index-build":
+                # Можно передать variant: index-build --variant delta
+                variant = "all"
+                if "--variant" in parts:
+                    idx = parts.index("--variant")
+                    if idx + 1 < len(parts):
+                        variant = parts[idx + 1]
+                _index_build_command(variant)
 
+            elif cmd == "index-search":
+                # Формат: index-search "python" --variant gamma --mode or --limit 5
+                # Упрощённо: берём первый аргумент как query, остальное опционально
+                if len(parts) < 2:
+                    console.print("[red]Использование: index-search <query> [--variant plain|delta|gamma] [--mode or|and] [--limit N][/red]")
+                else:
+                    query = parts[1]
+                    variant = "plain"
+                    mode = "or"
+                    limit = 10
+                    # Простой разбор опций (можно улучшить)
+                    if "--variant" in parts:
+                        idx = parts.index("--variant")
+                        if idx + 1 < len(parts):
+                            variant = parts[idx + 1]
+                    if "--mode" in parts:
+                        idx = parts.index("--mode")
+                        if idx + 1 < len(parts):
+                            mode = parts[idx + 1]
+                    if "--limit" in parts:
+                        idx = parts.index("--limit")
+                        if idx + 1 < len(parts) and parts[idx + 1].isdigit():
+                            limit = int(parts[idx + 1])
+                    _index_search_command(query, variant, mode, limit)
             else:
                 console.print(f"[red]Неизвестная команда:[/red] {cmd}. Введите help.")
 
         except KeyboardInterrupt:
             console.print("\nType exit to quit.")
         except Exception as e:
-            console.print(f"[red]Ошибка оболочки:[/red] {e}")
+            console.print(f"[red]Ошибка оболочки:[/red] {e}")            
