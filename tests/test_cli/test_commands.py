@@ -1,7 +1,9 @@
 import re
 import pytest
+from unittest.mock import patch
 from typer.testing import CliRunner
 from sqlalchemy import create_engine, delete, select
+from sqlmodel import SQLModel, Session
 from src.job_radar.cli.app import app
 from src.job_radar.database import init_db, get_session
 from src.job_radar.models.task import SearchTask
@@ -84,7 +86,14 @@ def test_interactive_list_sources():
 
 def test_list_vacancies_empty():
     """Список вакансий должен показывать сообщение о пустоте."""
-    result = runner.invoke(app, ["interactive"], input="vacancies\nexit\n")
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        class _Ctx:
+            def __enter__(self): return session
+            def __exit__(self, *a): session.commit()
+        with patch("src.job_radar.cli.app.get_session", return_value=_Ctx()):
+            result = runner.invoke(app, ["interactive"], input="vacancies\nexit\n")
     assert "Вакансий пока нет" in result.output
 
 

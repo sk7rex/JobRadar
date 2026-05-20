@@ -102,7 +102,12 @@ def another_source(session):
         session.add(source)
         session.commit()
         session.refresh(source)
-    
+    elif not source.is_active:
+        source.is_active = True
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
     return source
 
 

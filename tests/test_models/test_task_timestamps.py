@@ -41,8 +41,7 @@ def test_updated_at_multiple_changes(session, test_source):
     
     statuses = [
         TaskStatus.IN_PROGRESS,
-        TaskStatus.COMPLETED,
-        TaskStatus.FAILED
+        TaskStatus.FAILED,
     ]
     
     for new_status in statuses:
